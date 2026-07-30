@@ -1690,7 +1690,7 @@ html[data-user-role="viewer"] [data-delete]{opacity:.35!important;cursor:not-all
 (function(){
   window.__codexBootstrapLoaded=true;
   function install(){
-    ['codex-document-level-firestore-v1','codex-crm-restore-v1'].forEach(function(id){
+    ['codex-document-level-firestore-v1','codex-crm-restore-v1','codex-storage-growth-guard-v2'].forEach(function(id){
       var script=document.getElementById(id);
       if(script&&script.textContent){try{(0,eval)(script.textContent);}catch(e){console.error(id+' 실행 실패:',e);}}
     });
@@ -7878,8 +7878,17 @@ window.fbSetSheetUrl = fbSetSheetUrl;
 function saveAllToFile() {
   requireEditor('JSON 백업 저장');
   const data = {
-    _version: '1.0',
+    _version: '2.0-incremental-storage-safe',
     _savedAt: new Date().toISOString(),
+    _counts: {
+      promos:(window.promos||[]).length,
+      creators:(window.creators||[]).length,
+      products:(window.products||[]).length,
+      crmData:(window.crmData||[]).length,
+      seedData:(window.seedData||[]).length,
+      celebData:(window.celebData||[]).length,
+      organicData:(window.organicData||[]).length
+    },
     promos:    window.promos   || [],
     creators:  window.creators || [],
     products:  window.products || [],
@@ -7918,6 +7927,12 @@ function handleFileLoad(event) {
   reader.onload = function(e) {
     try {
       const data = JSON.parse(e.target.result);
+      if(!data || typeof data!=='object') throw new Error('올바른 JSON 백업 파일이 아닙니다.');
+      if(data._counts){
+        const countKeys=['promos','creators','products','crmData','seedData','celebData','organicData'];
+        const mismatches=countKeys.filter(k=>Number(data._counts[k]||0)!==(Array.isArray(data[k])?data[k].length:0));
+        if(mismatches.length) throw new Error('JSON 데이터 수 검증 실패: '+mismatches.join(', '));
+      }
       if(data.promos)      window.promos      = data.promos;
       if(data.creators)    window.creators    = data.creators;
       if(data.products)    window.products    = data.products;
@@ -21005,8 +21020,17 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   window.saveAllToFile = function saveAllToFile(){
     try {
       var data = {
-        _version: '1.0',
+        _version: '2.0-incremental-storage-safe',
         _savedAt: new Date().toISOString(),
+        _counts: {
+          promos:Array.isArray(window.promos)?window.promos.length:0,
+          creators:Array.isArray(window.creators)?window.creators.length:0,
+          products:Array.isArray(window.products)?window.products.length:0,
+          crmData:Array.isArray(window.crmData)?window.crmData.length:0,
+          seedData:Array.isArray(window.seedData)?window.seedData.length:0,
+          celebData:Array.isArray(window.celebData)?window.celebData.length:0,
+          organicData:Array.isArray(window.organicData)?window.organicData.length:0
+        },
         promos: Array.isArray(window.promos) ? window.promos : [],
         creators: Array.isArray(window.creators) ? window.creators : [],
         products: Array.isArray(window.products) ? window.products : [],
@@ -24411,7 +24435,8 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   'use strict';
   if(window.__codexDocumentLevelFirestoreV1)return;
   window.__codexDocumentLevelFirestoreV1=true;
-  var tracked={creators:null,crm:null};
+  var managed=['creators','crm','seeding','celebs','organic','promos','products'];
+  var tracked={creators:null,crm:null,seeding:null,celebs:null,organic:null,promos:null,products:null};
   function clone(v){try{return JSON.parse(JSON.stringify(v));}catch(e){return v;}}
   function stable(v){try{return JSON.stringify(v);}catch(e){return '';}}
   function idOf(coll,row,index){
@@ -24424,26 +24449,34 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     tracked[coll]=out;
     return rows;
   }
+  function remoteSnapshot(coll,collection){
+    return collection.get().then(function(snap){
+      var out={};
+      (snap.docs||[]).forEach(function(doc){out[String(doc.id)]=clone(Object.assign({_id:doc.id},doc.data()||{}));});
+      tracked[coll]=out;
+      return out;
+    });
+  }
   function saveChanged(coll,rows){
     if(!window.db||!window.isFirebaseReady)return Promise.reject(new Error('Firebase가 아직 준비되지 않았습니다.'));
     if(typeof window.isCurrentUserEditor==='function'&&!window.isCurrentUserEditor())return Promise.reject(new Error('수정 권한이 없습니다.'));
     rows=Array.isArray(rows)?rows:[];
-    var before=tracked[coll];
-    if(before===null){
-      snapshot(coll,rows);
-      return Promise.reject(new Error(coll+' 기준 데이터가 아직 로드되지 않아 안전을 위해 저장을 중단했습니다.'));
+    var collection=window.db.collection(coll);
+    if(tracked[coll]===null){
+      return remoteSnapshot(coll,collection).then(function(){return saveChanged(coll,rows);});
     }
-    var after={},jobs=[],collection=window.db.collection(coll);
+    var before=tracked[coll],after={},jobs=[];
     rows.forEach(function(row,index){
       var safe=clone(row||{}),id=idOf(coll,safe,index);
       safe._id=id;
-      if(safe._order===undefined)safe._order=index;
       after[id]=safe;
       if(!before[id]||stable(before[id])!==stable(safe))jobs.push(collection.doc(id).set(safe));
     });
-    Object.keys(before).forEach(function(id){
-      if(!Object.prototype.hasOwnProperty.call(after,id))jobs.push(collection.doc(id).delete());
-    });
+    var removed=Object.keys(before).filter(function(id){return !Object.prototype.hasOwnProperty.call(after,id);});
+    if(removed.length>1){
+      return Promise.reject(new Error(coll+'에서 '+removed.length+'개 문서 삭제 요청을 감지해 안전을 위해 전체 저장을 중단했습니다.'));
+    }
+    removed.forEach(function(id){jobs.push(collection.doc(id).delete());});
     if(!jobs.length){tracked[coll]=after;return Promise.resolve(true);}
     return Promise.all(jobs).then(function(){tracked[coll]=after;return true;});
   }
@@ -24451,7 +24484,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   if(typeof previousLoad==='function'){
     window.fbLoadAll=function(coll){
       return Promise.resolve(previousLoad.apply(this,arguments)).then(function(rows){
-        if(coll==='creators'||coll==='crm')snapshot(coll,rows||[]);
+        if(managed.indexOf(coll)>-1)snapshot(coll,rows||[]);
         return rows;
       });
     };
@@ -24465,7 +24498,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   try{fbMergeLinkClicks=window.fbMergeLinkClicks;}catch(e){}
   var previousBatch=window.fbSaveBatch;
   window.fbSaveBatch=function(coll,rows){
-    if(coll==='creators'||coll==='crm')return saveChanged(coll,rows);
+    if(managed.indexOf(coll)>-1)return saveChanged(coll,rows);
     return previousBatch.apply(this,arguments);
   };
   window.__codexTrackFirestoreRows=snapshot;
@@ -24580,6 +24613,279 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   window.switchMain=function(tab){var result=previousSwitch&&previousSwitch.apply(this,arguments);if(tab==='crm')load();return result;};
   try{switchMain=window.switchMain;}catch(e){}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',filters);else filters();
+})();
+</script>
+<script id="codex-storage-growth-guard-v2">
+(function(){
+  'use strict';
+  if(window.__codexStorageGrowthGuardV2)return;
+  window.__codexStorageGrowthGuardV2=true;
+
+  /* Feedback의 여러 보정 저장소를 거치지 않고 creators 문서 저장 경로 하나만 사용 */
+  function installCreatorSave(){
+    if(typeof window.fbSaveBatch!=='function')return false;
+    var single=function(){return window.fbSaveBatch('creators',window.creators||[]);};
+    single.__codexSingleCreatorSave=true;
+    window.fbSaveCreators=single;
+    try{fbSaveCreators=single;}catch(e){}
+    return true;
+  }
+
+  /*
+   * 기존 sheetSnapshots 문서는 읽기만 허용한다.
+   * 신규 part/manifest set 및 기존 part delete를 모두 무시하여
+   * 기존 데이터 삭제 없이 대용량 snapshot의 추가 팽창을 막는다.
+   */
+  function installSnapshotWriteGuard(){
+    var db=window.db;
+    if(!db||db.__codexSnapshotWriteGuardV2)return false;
+    var originalCollection=db.collection.bind(db);
+    var originalBatch=db.batch.bind(db);
+    function isSnapshotRef(ref){return !!(ref&&String(ref.path||'').indexOf('sheetSnapshots/')===0);}
+    db.collection=function(name){
+      var coll=originalCollection(name);
+      if(name!=='sheetSnapshots')return coll;
+      var facade=Object.create(coll);
+      facade.doc=function(id){
+        var ref=coll.doc(id),safe=Object.create(ref);
+        safe.get=ref.get.bind(ref);
+        if(typeof ref.onSnapshot==='function')safe.onSnapshot=ref.onSnapshot.bind(ref);
+        safe.set=function(){return Promise.resolve({skipped:true,reason:'sheetSnapshots growth guard'});};
+        safe.update=function(){return Promise.resolve({skipped:true,reason:'sheetSnapshots growth guard'});};
+        safe.delete=function(){return Promise.resolve({skipped:true,reason:'sheetSnapshots preservation guard'});};
+        return safe;
+      };
+      return facade;
+    };
+    db.batch=function(){
+      var batch=originalBatch(),hasWrites=false,wrapper={};
+      wrapper.set=function(ref,data,options){if(!isSnapshotRef(ref)){hasWrites=true;batch.set(ref,data,options);}return wrapper;};
+      wrapper.update=function(ref,data){if(!isSnapshotRef(ref)){hasWrites=true;batch.update(ref,data);}return wrapper;};
+      wrapper.delete=function(ref){if(!isSnapshotRef(ref)){hasWrites=true;batch.delete(ref);}return wrapper;};
+      wrapper.commit=function(){return hasWrites?batch.commit():Promise.resolve([]);};
+      return wrapper;
+    };
+    db.__codexSnapshotWriteGuardV2=true;
+    return true;
+  }
+
+  var tries=0,timer=setInterval(function(){
+    installCreatorSave();
+    if(installSnapshotWriteGuard()||window.db&&window.db.__codexSnapshotWriteGuardV2){
+      if(++tries>=8)clearInterval(timer);
+    }else if(++tries>=120)clearInterval(timer);
+  },250);
+  installCreatorSave();
+  installSnapshotWriteGuard();
+})();
+</script>
+<!-- CODEX PATCH v3: CRM non-destructive persistence and verified writes -->
+<script id="codex-crm-safe-persistence-v3">
+(function(){
+  'use strict';
+  if(window.__codexCrmSafePersistenceV3)return;
+  window.__codexCrmSafePersistenceV3=true;
+
+  var ready=false;
+  var loading=null;
+  var saving=0;
+  var remoteRows={};
+  var originalBatch=window.fbSaveBatch;
+  var originalSwitch=window.switchMain;
+
+  function clone(value){
+    try{return JSON.parse(JSON.stringify(value));}catch(e){return value;}
+  }
+  function stable(value){
+    try{return JSON.stringify(value);}catch(e){return '';}
+  }
+  function rowId(row,index){
+    row=row||{};
+    return String(row._id||row.id||('crm_'+index));
+  }
+  function setUiLocked(locked,label){
+    var button=document.querySelector('#main-crm .add-btn[onclick*="crmAddRow"], #main-crm button[onclick*="crmAddRow"]');
+    if(!button)return;
+    button.disabled=!!locked;
+    button.style.opacity=locked?'0.55':'';
+    button.style.cursor=locked?'wait':'';
+    if(label){
+      if(!button.dataset.crmOriginalText)button.dataset.crmOriginalText=button.textContent;
+      button.textContent=label;
+    }else if(button.dataset.crmOriginalText){
+      button.textContent=button.dataset.crmOriginalText;
+    }
+  }
+  function waitForFirebase(){
+    return new Promise(function(resolve,reject){
+      var tries=0;
+      var timer=setInterval(function(){
+        if(window.db&&window.isFirebaseReady){
+          clearInterval(timer);
+          resolve();
+        }else if(++tries>=240){
+          clearInterval(timer);
+          reject(new Error('Firebase 연결 시간이 초과되었습니다.'));
+        }
+      },250);
+    });
+  }
+  function mapRemote(snapshot){
+    var mapped={};
+    (snapshot.docs||[]).forEach(function(doc){
+      var value=clone(doc.data()||{});
+      if(!value._id)value._id=doc.id;
+      mapped[String(doc.id)]=value;
+    });
+    return mapped;
+  }
+  async function loadRemote(){
+    if(ready)return Object.keys(remoteRows).map(function(id){return clone(remoteRows[id]);});
+    if(loading)return loading;
+    setUiLocked(true,'CRM 불러오는 중...');
+    loading=(async function(){
+      await waitForFirebase();
+      var snapshot=await window.db.collection('crm').get();
+      remoteRows=mapRemote(snapshot);
+      var rows=Object.keys(remoteRows).map(function(id){return clone(remoteRows[id]);});
+      if(rows.length){
+        window.crmData=rows;
+      }else{
+        window.crmData=Array.isArray(window.crmData)?window.crmData:[];
+      }
+      if(typeof window.__codexTrackFirestoreRows==='function'){
+        window.__codexTrackFirestoreRows('crm',rows);
+      }
+      ready=true;
+      if(typeof window.crmRender==='function')window.crmRender();
+      return rows;
+    })().finally(function(){
+      loading=null;
+      setUiLocked(false);
+    });
+    return loading;
+  }
+  async function saveWithoutDeletes(rows){
+    await loadRemote();
+    rows=Array.isArray(rows)?rows:[];
+    if(!rows.length&&Object.keys(remoteRows).length){
+      throw new Error('기존 CRM 데이터가 있는 상태에서 빈 배열 저장을 차단했습니다.');
+    }
+    var collection=window.db.collection('crm');
+    var changed=[];
+    var seen={};
+    rows.forEach(function(source,index){
+      var safe=clone(source||{});
+      var id=rowId(safe,index);
+      if(seen[id])throw new Error('CRM 문서 ID가 중복되었습니다: '+id);
+      seen[id]=true;
+      safe._id=id;
+      if(!remoteRows[id]||stable(remoteRows[id])!==stable(safe)){
+        changed.push({id:id,data:safe});
+      }
+    });
+    if(!changed.length)return true;
+
+    saving++;
+    setUiLocked(true,'CRM 저장 중...');
+    try{
+      for(var start=0;start<changed.length;start+=400){
+        var group=changed.slice(start,start+400);
+        var batch=window.db.batch();
+        group.forEach(function(item){
+          batch.set(collection.doc(item.id),item.data);
+        });
+        await batch.commit();
+      }
+      for(var i=0;i<changed.length;i++){
+        var verify=await collection.doc(changed[i].id).get();
+        if(!verify.exists)throw new Error('CRM 저장 확인 실패: '+changed[i].id);
+        var saved=clone(verify.data()||{});
+        if(!saved._id)saved._id=verify.id;
+        remoteRows[changed[i].id]=saved;
+      }
+      return true;
+    }finally{
+      saving=Math.max(0,saving-1);
+      setUiLocked(false);
+    }
+  }
+
+  window.fbSaveBatch=function(collectionName,rows){
+    if(collectionName==='crm')return saveWithoutDeletes(rows);
+    return originalBatch.apply(this,arguments);
+  };
+  window.crmEnsureLoadedV3=loadRemote;
+  window.crmSaveVerifiedV3=function(){
+    return saveWithoutDeletes(window.crmData||[]);
+  };
+
+  window.crmAddRow=async function(){
+    try{
+      await loadRemote();
+      var before=(window.crmData||[]).length;
+      var item={
+        _id:'crm_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
+        date:'',time:'',type:'',platform:'',promotion:'',gender:'',
+        age:'',region:'',cost:0,send:0,
+        daily:[
+          {open:0,click:0,purchase:0,value:0},
+          {open:0,click:0,purchase:0,value:0},
+          {open:0,click:0,purchase:0,value:0}
+        ]
+      };
+      window.crmData.push(item);
+      if(typeof window.crmRender==='function')window.crmRender();
+      try{
+        await saveWithoutDeletes(window.crmData);
+      }catch(error){
+        window.crmData=window.crmData.filter(function(row){return row!==item;});
+        if(typeof window.crmRender==='function')window.crmRender();
+        throw error;
+      }
+      if(window.crmData.length!==before+1)throw new Error('CRM 행 개수 검증에 실패했습니다.');
+      alert('CRM 테스트 행 저장이 확인되었습니다.');
+    }catch(error){
+      console.error('CRM 행 추가 실패:',error);
+      alert('CRM 행을 저장하지 못했습니다. 기존 데이터는 삭제하지 않았습니다.\n'+(error.message||error));
+    }
+  };
+
+  window.crmDelete=function(){
+    alert('CRM 안전 검증본에서는 삭제 기능을 잠갔습니다.');
+    return false;
+  };
+
+  window.switchMain=function(tab){
+    var result=originalSwitch&&originalSwitch.apply(this,arguments);
+    if(tab==='crm')loadRemote().catch(function(error){
+      console.error('CRM 불러오기 실패:',error);
+      setUiLocked(true,'CRM 연결 확인 필요');
+      alert('CRM 데이터를 불러오지 못해 수정 기능을 잠갔습니다.\n'+(error.message||error));
+    });
+    return result;
+  };
+
+  window.addEventListener('beforeunload',function(event){
+    if(!saving)return;
+    event.preventDefault();
+    event.returnValue='CRM 저장이 진행 중입니다.';
+    return event.returnValue;
+  });
+
+  var bootTries=0;
+  var bootTimer=setInterval(function(){
+    if(window.db&&window.isFirebaseReady){
+      clearInterval(bootTimer);
+      loadRemote().catch(function(error){
+        console.error('CRM 초기 불러오기 실패:',error);
+        setUiLocked(true,'CRM 연결 확인 필요');
+      });
+    }else if(++bootTries>=240){
+      clearInterval(bootTimer);
+      setUiLocked(true,'CRM 연결 확인 필요');
+    }
+  },250);
 })();
 </script>
 </body>
