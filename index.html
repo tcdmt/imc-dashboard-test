@@ -25186,5 +25186,93 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   };
 })();
 </script>
+<!-- CODEX PATCH v5: non-destructive CRM-only JSON recovery, never automatic -->
+<script id="codex-crm-json-recovery-v5">
+(function(){
+  'use strict';
+  if(window.__codexCrmJsonRecoveryV5)return;
+  window.__codexCrmJsonRecoveryV5=true;
+
+  function clone(value){try{return JSON.parse(JSON.stringify(value));}catch(e){return value;}}
+  function hash(text){
+    var value=2166136261;
+    text=String(text||'');
+    for(var i=0;i<text.length;i++){value^=text.charCodeAt(i);value=Math.imul(value,16777619);}
+    return(value>>>0).toString(36);
+  }
+  function idFor(row,index){
+    row=row||{};
+    if(row._id||row.id)return String(row._id||row.id);
+    return'crm_restore_'+hash(JSON.stringify([row.date,row.time,row.type,row.platform,row.promotion,row.gender,row.age,row.region,row.cost,row.send,index]));
+  }
+  async function readBackup(file){
+    if(!file||typeof file.text!=='function')throw new Error('JSON 백업 파일을 선택해주세요.');
+    var data=JSON.parse(await file.text());
+    if(!data||typeof data!=='object')throw new Error('올바른 JSON 백업이 아닙니다.');
+    if(!Array.isArray(data.crmData))throw new Error('이 백업에는 crmData 배열이 없습니다.');
+    if(data._counts&&data._counts.crmData!=null&&Number(data._counts.crmData)!==data.crmData.length){
+      throw new Error('CRM 백업 행 개수 검증에 실패했습니다.');
+    }
+    var ids={},rows=data.crmData.map(function(source,index){
+      var row=clone(source||{}),id=idFor(row,index);
+      if(ids[id])throw new Error('CRM 백업에 중복 ID가 있습니다: '+id);
+      ids[id]=true;row._id=id;return row;
+    });
+    return{data:data,rows:rows};
+  }
+  window.inspectCrmBackupFileV5=async function(file){
+    var backup=await readBackup(file);
+    return{
+      version:backup.data._version||'',
+      savedAt:backup.data._savedAt||'',
+      crmRows:backup.rows.length,
+      ids:backup.rows.map(function(row){return row._id;})
+    };
+  };
+  window.restoreCrmOnlyFromJsonFileV5=async function(file){
+    if(!window.db||!window.isFirebaseReady)throw new Error('Firebase 연결 완료 후 실행해주세요.');
+    if(typeof window.isCurrentUserEditor==='function'&&!window.isCurrentUserEditor())throw new Error('수정 권한이 없습니다.');
+    var backup=await readBackup(file);
+    if(!backup.rows.length)throw new Error('CRM 백업 데이터가 0행이므로 복구를 중단했습니다.');
+
+    var collection=window.db.collection('crm');
+    var beforeSnapshot=await collection.get();
+    if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('read','crm',(beforeSnapshot.docs||[]).length,'crm-recovery-preview','crm');
+    var existing={};
+    (beforeSnapshot.docs||[]).forEach(function(doc){existing[String(doc.id)]=true;});
+    var missing=backup.rows.filter(function(row){return!existing[row._id];});
+    if(!missing.length){
+      return{ok:true,backupRows:backup.rows.length,existingRows:Object.keys(existing).length,restoredRows:0,message:'복구할 누락 CRM 문서가 없습니다.'};
+    }
+
+    for(var start=0;start<missing.length;start+=400){
+      var group=missing.slice(start,start+400),batch=window.db.batch();
+      group.forEach(function(row){batch.set(collection.doc(row._id),row);});
+      await batch.commit();
+      if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('write','crm',group.length,'crm-recovery-missing-only','crm');
+    }
+
+    var afterSnapshot=await collection.get();
+    if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('read','crm',(afterSnapshot.docs||[]).length,'crm-recovery-verification','crm');
+    var afterRows=(afterSnapshot.docs||[]).map(function(doc){return Object.assign({_id:doc.id},doc.data()||{});});
+    if(afterRows.length<Object.keys(existing).length+missing.length)throw new Error('CRM 복구 후 문서 수 검증에 실패했습니다.');
+    window.crmData=afterRows;
+    if(typeof window.__codexTrackFirestoreRows==='function')window.__codexTrackFirestoreRows('crm',afterRows);
+    if(typeof window.crmRender==='function')window.crmRender();
+    return{ok:true,backupRows:backup.rows.length,existingRows:Object.keys(existing).length,restoredRows:missing.length,totalRows:afterRows.length};
+  };
+  window.openCrmBackupRecoveryV5=function(){
+    return new Promise(function(resolve,reject){
+      var input=document.createElement('input');
+      input.type='file';input.accept='.json,application/json';
+      input.onchange=function(){
+        if(!input.files||!input.files[0]){resolve({cancelled:true});return;}
+        window.restoreCrmOnlyFromJsonFileV5(input.files[0]).then(resolve,reject);
+      };
+      input.click();
+    });
+  };
+})();
+</script>
 </body>
 </html>
