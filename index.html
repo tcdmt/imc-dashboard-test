@@ -25362,13 +25362,17 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     clearTimeout(renderTimer);
     clearTimeout(statsTimer);
     document.documentElement.dataset.tabLoading=tab;
+    if(tab!=='meta'&&typeof window.__cancelMetaRenderV2==='function')window.__cancelMetaRenderV2();
     showTab(tab);
 
     renderTimer=setTimeout(function(){
       if(token!==activeToken)return;
       ensureData(tab).then(function(){
         if(token!==activeToken)return;
-        requestAnimationFrame(function(){renderOnce(tab,token);});
+        /* Paint the selected page before building its large legacy table. */
+        requestAnimationFrame(function(){requestAnimationFrame(function(){
+          renderTimer=setTimeout(function(){renderOnce(tab,token);},40);
+        });});
       }).catch(function(error){
         console.error('탭 데이터 준비 실패:',tab,error);
         if(token===activeToken)delete document.documentElement.dataset.tabLoading;
@@ -25468,6 +25472,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   mRender=optimizedRender;
   window.mRender=optimizedRender;
   window.__clearMetaRenderCacheV1=function(){cache.clear();};
+  window.__cancelMetaRenderV2=function(){renderToken++;delete document.documentElement.dataset.metaRendering;};
 })();
 </script>
 <script id="sheet-post-sync-interaction-v6">
