@@ -25334,7 +25334,8 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   }
   function scheduleProductStats(tab,token){
     clearTimeout(statsTimer);
-    if(['feedback','organic','meta'].indexOf(tab)<0)return;
+    /* Meta는 자체 광고/매출 원본만 사용하므로 상품 통계 Sheet를 함께 불러오지 않는다. */
+    if(['feedback','organic'].indexOf(tab)<0)return;
     if(Array.isArray(window.productStatsRows)&&window.productStatsRows.length)return;
     statsTimer=setTimeout(function(){
       if(token!==activeToken)return;
@@ -25377,6 +25378,96 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     return true;
   };
   try{switchMain=window.switchMain;}catch(e){}
+})();
+</script>
+<!-- CODEX PATCH: chunk Meta source filtering before the unchanged Meta renderer -->
+<script id="codex-meta-chunked-render-v1">
+(function(){
+  'use strict';
+  if(window.__codexMetaChunkedRenderV1)return;
+  window.__codexMetaChunkedRenderV1=true;
+  if(typeof mRender!=='function')return;
+
+  var originalRender=mRender;
+  var renderToken=0;
+  var cache=new Map();
+
+  function source(name){
+    try{
+      if(name==='ad'&&typeof metaRawAd!=='undefined')return metaRawAd||[];
+      if(name==='adp'&&typeof metaRawAdP!=='undefined')return metaRawAdP||[];
+      if(name==='sales'&&typeof metaRawSales!=='undefined')return metaRawSales||[];
+    }catch(e){}
+    return[];
+  }
+  function rowDate(row){
+    row=row||{};
+    return String(row['날짜']||row.date||row.Date||row['일자']||'').trim();
+  }
+  function range(){
+    var from='',to='';
+    try{from=String(mFrom||'');to=String(mTo||'');}catch(e){}
+    return{from:from,to:to};
+  }
+  function cacheKey(rows,from,to,name){
+    var first=rows.length?rowDate(rows[0]):'',last=rows.length?rowDate(rows[rows.length-1]):'';
+    return[name,rows.length,first,last,from,to].join('|');
+  }
+  function filterChunked(rows,from,to,name,token){
+    var key=cacheKey(rows,from,to,name);
+    if(cache.has(key))return Promise.resolve(cache.get(key));
+    return new Promise(function(resolve,reject){
+      var result=[],index=0,size=700;
+      function step(){
+        if(token!==renderToken){reject(new Error('META_RENDER_CANCELLED'));return;}
+        var end=Math.min(index+size,rows.length);
+        for(;index<end;index++){
+          var date=rowDate(rows[index]);
+          if(!date)continue;
+          if((!from||date>=from)&&(!to||date<=to))result.push(rows[index]);
+        }
+        if(index<rows.length){setTimeout(step,0);return;}
+        cache.set(key,result);
+        if(cache.size>18)cache.delete(cache.keys().next().value);
+        resolve(result);
+      }
+      step();
+    });
+  }
+  function callOriginal(filtered,token){
+    if(token!==renderToken)return;
+    var oldAd,oldAdp,oldSales;
+    try{
+      oldAd=metaRawAd;oldAdp=metaRawAdP;oldSales=metaRawSales;
+      metaRawAd=filtered[0];metaRawAdP=filtered[1];metaRawSales=filtered[2];
+      originalRender();
+    }finally{
+      metaRawAd=oldAd;metaRawAdP=oldAdp;metaRawSales=oldSales;
+      if(token===renderToken)delete document.documentElement.dataset.metaRendering;
+    }
+  }
+  function optimizedRender(){
+    var token=++renderToken,r=range();
+    document.documentElement.dataset.metaRendering='true';
+    var sources=[source('ad'),source('adp'),source('sales')];
+    Promise.all([
+      filterChunked(sources[0],r.from,r.to,'ad',token),
+      filterChunked(sources[1],r.from,r.to,'adp',token),
+      filterChunked(sources[2],r.from,r.to,'sales',token)
+    ]).then(function(filtered){
+      if(token!==renderToken)return;
+      var run=function(){callOriginal(filtered,token);};
+      if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:800});
+      else requestAnimationFrame(run);
+    }).catch(function(error){
+      if(error&&error.message==='META_RENDER_CANCELLED')return;
+      console.error('Meta 분할 렌더 준비 실패:',error);
+      if(token===renderToken)delete document.documentElement.dataset.metaRendering;
+    });
+  }
+  mRender=optimizedRender;
+  window.mRender=optimizedRender;
+  window.__clearMetaRenderCacheV1=function(){cache.clear();};
 })();
 </script>
 </body>
