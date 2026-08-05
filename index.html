@@ -23694,7 +23694,27 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   function profileUrl(r){var id=String(r.id||r.handle||'').trim().replace(/^@/,'');var ch=normCh(r.ch||r.channel);if(!id)return '';if(ch==='Instagram')return 'https://www.instagram.com/'+id;if(ch==='Youtube')return 'https://www.youtube.com/@'+id;if(ch==='Tiktok')return 'https://www.tiktok.com/@'+id;if(ch==='X')return 'https://x.com/'+id;if(ch==='Blog')return 'https://blog.naver.com/'+id;return '';}
   function idHtml(r){var v=r.id||r.handle||'';var url=profileUrl(r);return url?'<a class="seed-id-link" href="'+esc(url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation();">'+esc(v||'-')+'</a>':esc(v||'-');}
   function uidByPlatform(p,platform){if(!p)return '';if(platform==='무신사')return p.musinsaUid||p.uid||'';if(platform==='29CM')return p.cmUid||p.uid||'';if(platform==='자사몰')return p.storeUid||p.uid||'';return p.uid||p.musinsaUid||p.cmUid||p.storeUid||'';}
-  function findProduct(it,r){var platform=(it&&it.platform)||r.platform||r.landing||'';var keys=[it&&it.code,it&&it.uid,it&&it.name].map(function(x){return String(x||'').trim().toLowerCase();}).filter(Boolean);var best=null,score=0;(window.products||[]).forEach(function(p){var vals=[p.code,uidByPlatform(p,platform),p.name].map(function(x){return String(x||'').trim().toLowerCase();});var s=0;keys.forEach(function(k){vals.forEach(function(v){if(v===k)s+=100;else if(v&&v.indexOf(k)>-1)s+=20;});});if(s>score){score=s;best=p;}});return best;}
+  var seedProductIndexV8=null;
+  function seedNormV8(v){return String(v||'').trim().toLowerCase();}
+  function seedBuildProductIndexV8(){
+    var map=new Map(),products=window.products||[];
+    function add(key,p){key=seedNormV8(key);if(!key)return;var list=map.get(key);if(!list){list=[];map.set(key,list);}if(list.indexOf(p)<0)list.push(p);}
+    products.forEach(function(p){
+      add(p&&p.code,p);add(p&&p.name,p);
+      add(p&&p.uid,p);add(p&&p.musinsaUid,p);add(p&&p.cmUid,p);add(p&&p.storeUid,p);
+    });
+    seedProductIndexV8={map:map,products:products};
+    return seedProductIndexV8;
+  }
+  function findProduct(it,r){
+    var platform=(it&&it.platform)||r.platform||r.landing||'';
+    var keys=[it&&it.code,it&&it.uid,it&&it.name].map(seedNormV8).filter(Boolean);
+    var index=seedProductIndexV8||seedBuildProductIndexV8(),candidates=[],seen=new Set();
+    keys.forEach(function(k){(index.map.get(k)||[]).forEach(function(p){if(!seen.has(p)){seen.add(p);candidates.push(p);}});});
+    var pool=candidates.length?candidates:index.products,best=null,score=0;
+    pool.forEach(function(p){var vals=[p.code,uidByPlatform(p,platform),p.name].map(seedNormV8);var s=0;keys.forEach(function(k){vals.forEach(function(v){if(v===k)s+=100;else if(v&&v.indexOf(k)>-1)s+=20;});});if(s>score){score=s;best=p;}});
+    return best;
+  }
   function itemCost(r){ensure(r);return r.items.reduce(function(sum,it){var p=findProduct(it,r);return sum+(p?num(p.cost):num(it.cost));},0);}
   function autoFillItem(r,it){var p=findProduct(it,r);if(!p)return;var platform=it.platform||r.platform||r.landing||'';it.uid=uidByPlatform(p,platform)||it.uid||'';it.code=p.code||it.code||'';it.name=p.name||it.name||'';if(!it.color){var m=String(p.name||'').match(/\(([^()]*)\)\s*$/);it.color=m?m[1].trim():'';}it.cost=num(p.cost)||it.cost||0;}
   function daily(r,i){ensure(r);if(!r.daily[i])r.daily[i]={likes:0,comments:0,productLikes:0,sales:0,revenue:0,totalSales:0};return r.daily[i];}
@@ -23731,6 +23751,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     return rows().map(function(r,i){return {r:ensure(r),i:i};}).filter(function(x){return true;}).sort(function(a,b){return (b.r.fixed?1:0)-(a.r.fixed?1:0)||((a.r._order||0)-(b.r._order||0));});
   }
   function renderList(){
+    seedProductIndexV8=null;
     var body=document.getElementById('seed-body-v11');if(!body)return;
     body.innerHTML=filtered().map(function(x){
       var r=x.r,i=x.i;
@@ -23762,6 +23783,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   function renderSummary(r){var likes=(r.daily||[]).reduce(function(s,d){return s+num(d.likes);},0),comments=(r.daily||[]).reduce(function(s,d){return s+num(d.comments);},0);return '<div class="seed-feedback-kpi"><div class="s-card"><div class="s-label">좋아요</div><div class="s-val">'+fmtNum(likes)+'</div><div class="s-sub">전체 합계</div></div><div class="s-card"><div class="s-label">댓글</div><div class="s-val">'+fmtNum(comments)+'</div><div class="s-sub">전체 합계</div></div></div><div class="seed-feedback-panel"><div class="seed-feedback-panel-title">기준일별 성과 요약</div><table class="seed-feedback-table"><thead><tr><th>기준일</th><th>좋아요</th><th>댓글</th></tr></thead><tbody>'+[0,1,2,3].map(function(i){var d=daily(r,i);return '<tr><td>'+dateLabel(r.uploadDate,i)+'</td><td>'+fmtNum(d.likes)+'</td><td>'+fmtNum(d.comments)+'</td></tr>';}).join('')+'</tbody></table></div><div class="seed-feedback-panel"><div class="seed-feedback-panel-title">상품 별 성과 요약</div>'+productSummary(r)+'</div>';}
   function renderDay(r,di){var d=daily(r,di);return '<div class="seed-feedback-kpi"><div class="s-card"><div class="s-label">좋아요</div><div class="s-val">'+fmtNum(d.likes)+'</div><div class="s-sub">'+dateLabel(r.uploadDate,di)+'</div></div><div class="s-card"><div class="s-label">댓글</div><div class="s-val">'+fmtNum(d.comments)+'</div><div class="s-sub">'+dateLabel(r.uploadDate,di)+'</div></div></div><div class="seed-feedback-panel"><div class="seed-feedback-panel-title">상품 별 성과 요약</div>'+productSummary(r)+'</div>';}
   function renderDetail(){
+    seedProductIndexV8=null;
     var r=row();if(!r)return;ensure(r);
     var name=document.getElementById('seed-detail-name-v11');if(name)name.textContent=r.name||'-';
     var badges=document.getElementById('seed-detail-badges-v11');if(badges)badges.innerHTML=detailBadges(r);
