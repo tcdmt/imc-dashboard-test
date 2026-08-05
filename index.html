@@ -17148,6 +17148,7 @@ setTimeout(function(){ window.seedV11EnsureControls(); },500);
     window.switchMain.__seedV11Wrapped=true;
   }
   document.addEventListener('click',function(e){
+    if(window.__codexUnifiedTabDispatcherV6)return;
     var t=e.target && e.target.closest ? e.target.closest('.top-tab') : null;
     if(t && (t.textContent||'').trim()==='Seeding') setTimeout(bootSeedingV11,0);
   },true);
@@ -17382,6 +17383,7 @@ window.seedRender();
     setTimeout(boot, 300);
   });
   document.addEventListener('click', function(e){
+    if(window.__codexUnifiedTabDispatcherV6)return;
     var tab = e.target && e.target.closest ? e.target.closest('.top-tab') : null;
     if(tab && (tab.textContent || '').trim() === 'Seeding') setTimeout(boot, 0);
   }, true);
@@ -21666,6 +21668,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
   else schedule();
   document.addEventListener('click', function(e){
+    if(window.__codexUnifiedTabDispatcherV6)return;
     var tab = e.target && e.target.closest ? e.target.closest('.top-tab') : null;
     if(tab && (tab.textContent || '').trim() === 'Seeding') setTimeout(schedule, 0);
   }, true);
@@ -25272,6 +25275,104 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
       input.click();
     });
   };
+})();
+</script>
+<!-- CODEX PATCH: unified non-blocking tab dispatcher; preserves existing markup and styles -->
+<script id="codex-unified-tab-dispatcher-v6">
+(function(){
+  'use strict';
+  if(window.__codexUnifiedTabDispatcherV6)return;
+  window.__codexUnifiedTabDispatcherV6=true;
+
+  var tabs=['monthly','promotion','meta','list','feedback','crm','seeding','celeb','organic','budget'];
+  var activeToken=0;
+  var renderTimer=null;
+  var statsTimer=null;
+  var initialized={};
+
+  function safeCall(name,args){
+    var fn=window[name];
+    if(typeof fn!=='function')return;
+    try{return fn.apply(window,args||[]);}catch(error){console.error(name+' 실행 실패:',error);}
+  }
+  function showTab(tab){
+    tabs.forEach(function(id){
+      var page=document.getElementById('pg-'+id),active=id===tab;
+      if(page){page.style.display=active?'block':'none';page.classList.toggle('imc-main-tab-active',active);}
+    });
+    document.querySelectorAll('.top-tab').forEach(function(button,index){button.classList.toggle('on',tabs[index]===tab);});
+  }
+  function renderOnce(tab,token){
+    if(token!==activeToken)return;
+    if(tab==='promotion')safeCall('applyPromoFilter');
+    if(tab==='meta')safeCall('mInitMeta');
+    if(tab==='list')safeCall('applyListFilter');
+    if(tab==='feedback')safeCall('applyFeedbackFilter');
+    if(tab==='crm')safeCall('crmRender');
+    if(tab==='seeding'){
+      if(!initialized.seeding)safeCall('seedInitMonthBtns');
+      safeCall('seedRender');
+      safeCall('orgUpdateCountdown');
+    }
+    if(tab==='celeb'){
+      if(!initialized.celeb)safeCall('celebInitMonthBtns');
+      safeCall('celebRender');
+    }
+    if(tab==='organic'){
+      if(!initialized.organic)safeCall('orgInitMonthBtns');
+      safeCall('orgRender');
+      safeCall('orgUpdateCountdown');
+    }
+    if(tab==='budget')safeCall('renderBudget');
+    if(tab==='monthly')safeCall('buildCal');
+    initialized[tab]=true;
+    delete document.documentElement.dataset.tabLoading;
+  }
+  function scheduleProductStats(tab,token){
+    clearTimeout(statsTimer);
+    if(['feedback','organic','meta'].indexOf(tab)<0)return;
+    if(Array.isArray(window.productStatsRows)&&window.productStatsRows.length)return;
+    statsTimer=setTimeout(function(){
+      if(token!==activeToken)return;
+      var run=function(){
+        if(token!==activeToken)return;
+        var promise=safeCall('loadProductStatsFromSheet');
+        if(promise&&typeof promise.catch==='function')promise.catch(function(error){console.warn('상품 통계 지연 로드 실패:',error);});
+      };
+      if(typeof requestIdleCallback==='function')requestIdleCallback(run,{timeout:2500});
+      else setTimeout(run,0);
+    },1200);
+  }
+  function ensureData(tab){
+    if(typeof window.__firebaseEnsureTabDataV4==='function'){
+      try{return Promise.resolve(window.__firebaseEnsureTabDataV4(tab));}catch(error){return Promise.reject(error);}
+    }
+    if(tab==='crm'&&typeof window.crmEnsureLoadedV3==='function')return Promise.resolve(window.crmEnsureLoadedV3());
+    return Promise.resolve();
+  }
+
+  window.switchMain=function(tab){
+    if(tabs.indexOf(tab)<0)return false;
+    var token=++activeToken;
+    clearTimeout(renderTimer);
+    clearTimeout(statsTimer);
+    document.documentElement.dataset.tabLoading=tab;
+    showTab(tab);
+
+    renderTimer=setTimeout(function(){
+      if(token!==activeToken)return;
+      ensureData(tab).then(function(){
+        if(token!==activeToken)return;
+        requestAnimationFrame(function(){renderOnce(tab,token);});
+      }).catch(function(error){
+        console.error('탭 데이터 준비 실패:',tab,error);
+        if(token===activeToken)delete document.documentElement.dataset.tabLoading;
+      });
+      scheduleProductStats(tab,token);
+    },0);
+    return true;
+  };
+  try{switchMain=window.switchMain;}catch(e){}
 })();
 </script>
 </body>
