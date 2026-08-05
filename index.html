@@ -4516,7 +4516,12 @@ function listCostBlur(el,ri,costNum){
 }
 function fmtCost(n){return n?'₩'+Math.round(n).toLocaleString('ko-KR'):'₩0';}
 function renderCreatorRows(list){
-  document.getElementById('creator-body').innerHTML=list.map(r=>{
+  const body=document.getElementById('creator-body');if(!body)return;
+  const token=(window.__listRenderTokenV9||0)+1;window.__listRenderTokenV9=token;
+  body.innerHTML='';let index=0;const size=24;
+  function step(){
+    if(token!==window.__listRenderTokenV9)return;
+    const part=list.slice(index,index+size).map(r=>{
     const ri=window.creators.indexOf(r);
     return '<tr>'
       +'<td class="col-sticky-td dc-td" style="left:0;min-width:110px;">'+dcCell(r.name,'window.creators['+ri+'].name=__VAL__;fbSaveCreators();window.buildCal();',{placeholder:'크리에이터명',minW:'100px'})+'</td>'
@@ -4543,6 +4548,10 @@ function renderCreatorRows(list){
       +'<td><span class="del-btn" onclick="window.creators.splice('+ri+',1);fbSaveCreators();applyListFilter();window.buildCal();window.updateSummary();">&#10005;</span></td>'
       +'</tr>';
   }).join('');
+    body.insertAdjacentHTML('beforeend',part);index+=size;
+    if(index<list.length)setTimeout(step,0);
+  }
+  step();
 }
 window.applyListFilter=function(){
   // 스크롤 위치 보존
@@ -4687,8 +4696,11 @@ function renderFeedbackRows(list){
   const body=document.getElementById('feedback-body');
   const elig=list.filter(r=>r.checked===true);
   if(!elig.length){body.innerHTML='<tr><td colspan="30" style="text-align:center;color:var(--color-text-tertiary);padding:16px;">List 탭의 진행 컬럼에 체크하면 자동 기입됩니다.</td></tr>';return;}
-  let html='';
-  elig.forEach(r=>{
+  const token=(window.__feedbackRenderTokenV9||0)+1;window.__feedbackRenderTokenV9=token;
+  body.innerHTML='';let cursor=0;const batchSize=2;
+  function renderBatch(){
+    if(token!==window.__feedbackRenderTokenV9)return;
+    let html='';elig.slice(cursor,cursor+batchSize).forEach(r=>{
     const ci=window.creators.indexOf(r);
     const collapsed=fbIsFeedbackCreatorCollapsed(ci);
     // 업로드 일자를 D+0으로 보고 D-1부터 D+6까지 노출
@@ -4925,7 +4937,8 @@ function renderFeedbackRows(list){
       })()
       +`</tr>`;
   });
-  body.innerHTML=html;
+    body.insertAdjacentHTML('beforeend',html);cursor+=batchSize;
+    if(cursor<elig.length){setTimeout(renderBatch,0);return;}
   // 상단 스크롤바 동기화
   const wrap=document.getElementById('fb-tbl-wrap');
   const top=document.getElementById('fb-scroll-top');
@@ -4936,6 +4949,8 @@ function renderFeedbackRows(list){
     top.onscroll=()=>{wrap.scrollLeft=top.scrollLeft;};
     wrap.onscroll=()=>{top.scrollLeft=wrap.scrollLeft;};
   }
+  }
+  renderBatch();
 }
 
 /* 업로드 링크 입력/수정 팝업 */
@@ -25385,6 +25400,8 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     clearTimeout(statsTimer);
     document.documentElement.dataset.tabLoading=tab;
     if(tab!=='meta'&&typeof window.__cancelMetaRenderV2==='function')window.__cancelMetaRenderV2();
+    window.__listRenderTokenV9=(window.__listRenderTokenV9||0)+1;
+    window.__feedbackRenderTokenV9=(window.__feedbackRenderTokenV9||0)+1;
     showTab(tab);
 
     renderTimer=setTimeout(function(){
