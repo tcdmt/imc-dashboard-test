@@ -23769,7 +23769,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     var box=document.getElementById('seed-summary-content-v11');renderTabs(r);if(!box)return;
     if(currentTab.indexOf('day')===0)box.innerHTML=renderDay(r,parseInt(currentTab.replace('day',''),10)||0);else box.innerHTML=renderSummary(r);
   }
-  window.seedV11OpenDetail=function(i){currentIndex=i;currentTab='summary';var m=document.getElementById('seed-detail-modal-v11');if(m){m.classList.add('open');m.style.setProperty('display','flex','important');m.style.setProperty('visibility','visible','important');m.style.setProperty('opacity','1','important');m.style.setProperty('pointer-events','auto','important');m.setAttribute('aria-hidden','false');}renderDetail();};
+  window.seedV11OpenDetail=function(i){currentIndex=i;currentTab='summary';var m=document.getElementById('seed-detail-modal-v11');if(m){m.classList.add('open');m.style.setProperty('display','flex','important');m.style.setProperty('visibility','visible','important');m.style.setProperty('opacity','1','important');m.style.setProperty('pointer-events','auto','important');m.setAttribute('aria-hidden','false');}var runDetail=function(){renderDetail();};if(typeof requestAnimationFrame==='function')requestAnimationFrame(function(){setTimeout(runDetail,0);});else setTimeout(runDetail,0);};
   window.seedV11CloseDetail=function(){var m=document.getElementById('seed-detail-modal-v11');if(m){m.classList.remove('open');m.style.setProperty('display','none','important');m.style.setProperty('visibility','hidden','important');m.style.setProperty('opacity','0','important');m.style.setProperty('pointer-events','none','important');m.setAttribute('aria-hidden','true');}seedV11CloseSubModal();};
   window.seedV11SetDetailTab=function(tab){currentTab=tab||'summary';renderDetail();};
 
@@ -23781,7 +23781,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     if(subType==='items'){var body=document.getElementById('seed-item-body-v11');if(body)body.innerHTML=r.items.map(function(it,i){return '<tr><td>'+esc(it.platform||r.platform||'-')+'</td><td><input value="'+esc(it.uid||'')+'" onchange="seedV11ItemChange('+i+',\'uid\',this.value)"></td><td><input value="'+esc(it.code||'')+'" onchange="seedV11ItemChange('+i+',\'code\',this.value)"></td><td><input value="'+esc(it.name||'')+'" onchange="seedV11ItemChange('+i+',\'name\',this.value)"></td><td><input value="'+esc(it.color||'')+'" onchange="seedV11ItemChange('+i+',\'color\',this.value)"></td><td><input value="'+esc(it.size||'')+'" onchange="seedV11ItemChange('+i+',\'size\',this.value)"></td><td><button class="del-btn" onclick="seedV11DeleteItem('+i+')">삭제</button></td></tr>';}).join('');}
     if(subType==='links'){var wrap=document.getElementById('seed-link-list-v11'),empty=document.getElementById('seed-link-empty-v11');if(empty)empty.style.display=r.links.length?'none':'block';if(wrap)wrap.innerHTML=r.links.map(function(l,i){return '<div class="link-row"><input value="'+esc(l.title||'업로드 링크')+'" onchange="seedV11LinkChange('+i+',\'title\',this.value)"><input value="'+esc(l.url||'')+'" onchange="seedV11LinkChange('+i+',\'url\',this.value)"><button class="del-btn" onclick="seedV11DeleteLink('+i+')">삭제</button></div>';}).join('');}
   }
-  window.seedV11OpenSubModal=function(type){subType=type;var m=document.getElementById('seed-sub-modal-v11');if(m){m.classList.add('open');m.style.setProperty('display','flex','important');m.style.setProperty('visibility','visible','important');m.style.setProperty('opacity','1','important');m.style.setProperty('pointer-events','auto','important');}renderSub();};
+  window.seedV11OpenSubModal=function(type){subType=type;var m=document.getElementById('seed-sub-modal-v11');if(m){m.classList.add('open');m.style.setProperty('display','flex','important');m.style.setProperty('visibility','visible','important');m.style.setProperty('opacity','1','important');m.style.setProperty('pointer-events','auto','important');}var runSub=function(){renderSub();};if(typeof requestAnimationFrame==='function')requestAnimationFrame(function(){setTimeout(runSub,0);});else setTimeout(runSub,0);};
   window.seedV11CloseSubModal=function(){var m=document.getElementById('seed-sub-modal-v11');if(m){m.classList.remove('open');m.style.setProperty('display','none','important');m.style.setProperty('visibility','hidden','important');m.style.setProperty('opacity','0','important');m.style.setProperty('pointer-events','none','important');}};
   window.seedV11SaveSubModal=function(){var r=row();if(!r)return;ensure(r);if(subType==='basic'){r.basic={height:document.getElementById('seed-basic-height-v11').value,weight:document.getElementById('seed-basic-weight-v11').value,phone:document.getElementById('seed-basic-phone-v11').value,post:document.getElementById('seed-basic-post-v11').value,address:document.getElementById('seed-basic-address-v11').value,tracking:document.getElementById('seed-basic-tracking-v11').value};}save();seedV11CloseSubModal();renderDetail();};
   window.seedV11AddItem=function(){var r=row();if(!r)return;ensure(r);r.items.push({platform:r.platform||'무신사',uid:'',code:'',name:'',color:'',size:'',cost:0});save();renderSub();renderList();renderDetail();};
@@ -25468,6 +25468,27 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   mRender=optimizedRender;
   window.mRender=optimizedRender;
   window.__clearMetaRenderCacheV1=function(){cache.clear();};
+})();
+</script>
+<script id="sheet-post-sync-interaction-v6">
+(function(){
+  'use strict';
+  if(window.__sheetPostSyncInteractionV6)return;
+  window.__sheetPostSyncInteractionV6=true;
+  function install(name){
+    var fn=window[name];
+    if(typeof fn!=='function'||fn.__sheetPostSyncV6)return;
+    var wrapped=async function(){
+      var result=await fn.apply(this,arguments);
+      if(typeof window.__clearMetaRenderCacheV1==='function')window.__clearMetaRenderCacheV1();
+      return result;
+    };
+    wrapped.__sheetPostSyncV6=true;
+    window[name]=wrapped;
+  }
+  function boot(){install('loadMetaFromSheets');install('refreshMetaFromSheets');}
+  boot();
+  var tries=0,timer=setInterval(function(){boot();if(++tries>=40)clearInterval(timer);},250);
 })();
 </script>
 </body>
