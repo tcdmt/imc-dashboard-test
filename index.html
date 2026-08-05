@@ -20816,7 +20816,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
         });
         writeLocal(local);
         applyBackup(local);
-        if(window.applyFeedbackFilter)window.applyFeedbackFilter();
+        if(window.__firebaseActiveTab==='feedback'&&window.applyFeedbackFilter)window.applyFeedbackFilter();
       }).catch(function(e){remoteLoaded=false;console.warn('Feedback 링크 클릭 Firebase 복원 실패:',e);});
     }catch(e){remoteLoaded=false;}
   }
@@ -21212,7 +21212,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
         if(doc&&doc.exists)local=mergeStores(local,doc.data()||{});
         writeStore(local);
         applyStoreToRows(window.creators||[],local);
-        if(window.applyFeedbackFilter)window.applyFeedbackFilter();
+        if(window.__firebaseActiveTab==='feedback'&&window.applyFeedbackFilter)window.applyFeedbackFilter();
       }).catch(function(e){remoteStarted=false;console.warn('Feedback 상세 데이터 Firebase 복원 실패:',e);setTimeout(startRemoteLoad,1500);});
     }catch(e){remoteStarted=false;setTimeout(startRemoteLoad,1500);}
   }
@@ -24947,26 +24947,30 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     return (snapshot.docs||[]).length;
   }
   function renderCollection(collection){
+    var active=window.__firebaseActiveTab||'monthly';
     if(collection==='creators'){
-      if(window.applyListFilter)window.applyListFilter();
-      if(window.applyFeedbackFilter)window.applyFeedbackFilter();
-      if(window.buildCal)window.buildCal();
-      if(window.updateSummary)window.updateSummary();
+      if(active==='list'){
+        if(window.applyListFilter)window.applyListFilter();
+        if(window.updateSummary)window.updateSummary();
+      }
+      if(active==='feedback'&&window.applyFeedbackFilter)window.applyFeedbackFilter();
+      if(active==='monthly'&&window.buildCal)window.buildCal();
     }
     if(collection==='promos'){
-      if(window.applyPromoFilter)window.applyPromoFilter();
-      if(window.buildCal)window.buildCal();
+      if(active==='promotion'&&window.applyPromoFilter)window.applyPromoFilter();
+      if(active==='monthly'&&window.buildCal)window.buildCal();
     }
     if(collection==='products'){
-      if(window.renderModalItems)window.renderModalItems();
-      if(window.applyFeedbackFilter)window.applyFeedbackFilter();
+      var modal=document.getElementById('item-modal');
+      if(active==='list'&&modal&&modal.classList.contains('open')&&window.renderModalItems)window.renderModalItems();
+      if(active==='feedback'&&window.applyFeedbackFilter)window.applyFeedbackFilter();
     }
-    if(collection==='seeding'&&window.seedRender)window.seedRender();
+    if(collection==='seeding'&&active==='seeding'&&window.seedRender)window.seedRender();
     if(collection==='celebs'){
-      if(window.celebRender)window.celebRender();
-      if(window.buildCal)window.buildCal();
+      if(active==='celeb'&&window.celebRender)window.celebRender();
+      if(active==='monthly'&&window.buildCal)window.buildCal();
     }
-    if(collection==='organic'&&window.orgRender)window.orgRender();
+    if(collection==='organic'&&active==='organic'&&window.orgRender)window.orgRender();
   }
   function waitForFirebase(){
     return new Promise(function(resolve,reject){
