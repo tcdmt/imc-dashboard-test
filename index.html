@@ -24254,17 +24254,30 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   function rowCode(r){return val(r,['상품코드','상품 코드','productCode','code','itemCode']);}
   function rowName(r){return val(r,['상품명','제품명','상품 이름','product','productName','goodsName','itemName','name']);}
   function rowLikes(r){return num(val(r,['좋아요','상품 좋아요','상품좋아요','좋아요 수','좋아요수','likes','heartCount','likeCount']));}
-  function matchStat(it,p,date){
-    var pk=platform(p||it.platform),uid=norm(itemUid(it,p)),code=norm(itemCode(it)),name=norm(itemName(it));
-    var dated=(window.productStatsRows||[]).filter(function(r){
-      var rp=rowPlatform(r);
-      return rowDate(r)===date&&(!pk||!rp||pk===rp);
+  var statsIndexV13=null,statsRowsV13=null,statsLengthV13=-1;
+  function statsKeyV13(date,type,value,pk){return date+'|'+type+'|'+norm(value)+'|'+(pk||'*');}
+  function buildStatsIndexV13(){
+    var rows=window.productStatsRows||[],map=new Map();
+    rows.forEach(function(r){
+      var date=rowDate(r),pk=rowPlatform(r),values=[['uid',rowUid(r)],['code',rowCode(r)],['name',rowName(r)]];
+      if(!date)return;
+      values.forEach(function(pair){
+        var value=norm(pair[1]);if(!value)return;
+        map.set(statsKeyV13(date,pair[0],value,'*'),r);
+        map.set(statsKeyV13(date,pair[0],value,pk||''),r);
+      });
     });
-    var matched=[];
-    if(uid)matched=dated.filter(function(r){return norm(rowUid(r))===uid;});
-    if(!matched.length&&code)matched=dated.filter(function(r){return norm(rowCode(r))===code;});
-    if(!matched.length&&name)matched=dated.filter(function(r){return norm(rowName(r))===name;});
-    return matched.length?matched[matched.length-1]:null;
+    statsRowsV13=rows;statsLengthV13=rows.length;statsIndexV13=map;return map;
+  }
+  function matchStat(it,p,date){
+    var rows=window.productStatsRows||[],index=(statsIndexV13&&statsRowsV13===rows&&statsLengthV13===rows.length)?statsIndexV13:buildStatsIndexV13();
+    var pk=platform(p||it.platform),tests=[['uid',itemUid(it,p)],['code',itemCode(it)],['name',itemName(it)]];
+    for(var i=0;i<tests.length;i++){
+      var value=norm(tests[i][1]);if(!value)continue;
+      var found=pk?(index.get(statsKeyV13(date,tests[i][0],value,pk))||index.get(statsKeyV13(date,tests[i][0],value,''))):index.get(statsKeyV13(date,tests[i][0],value,'*'));
+      if(found)return found;
+    }
+    return null;
   }
   function itemKeys(it,p){
     var keys=[],uid=itemUid(it,p),code=itemCode(it),name=itemName(it),pk=platform(p||it.platform);
