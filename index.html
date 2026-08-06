@@ -25535,5 +25535,64 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   var tries=0,timer=setInterval(function(){boot();if(++tries>=40)clearInterval(timer);},250);
 })();
 </script>
+<script id="codex-meta-interruptible-aggregate-v10">
+(function(){
+  'use strict';
+  if(window.__codexMetaAggregateV10)return;
+  window.__codexMetaAggregateV10=true;
+  var token=0;
+  function pause(){return new Promise(function(resolve){setTimeout(resolve,0);});}
+  function alive(t){return t===token&&(!document.getElementById('pg-meta')||document.getElementById('pg-meta').style.display!=='none');}
+  async function eachChunk(rows,t,visit){
+    rows=rows||[];
+    for(var i=0;i<rows.length;i+=160){
+      if(!alive(t))throw new Error('META_CANCELLED');
+      var end=Math.min(i+160,rows.length);
+      for(var j=i;j<end;j++)visit(rows[j]);
+      await pause();
+    }
+  }
+  function val(row,keys){return mRawVal(row,keys);}
+  function num(row,keys){return mRawNum(row,keys);}
+  async function aggregate(t){
+    var from=String(mFrom||''),to=String(mTo||''),daily={},adMap={},realMap={};
+    await eachChunk(metaRawAd||[],t,function(row){
+      var date=String(val(row,['날짜'])||'').trim();
+      if(!date||date<from||date>to||!mRowMatches(row,mPlatform,mBrand))return;
+      var r=daily[date]||(daily[date]={date:date,dateKo:mFmtDateKo(date),spend:0,imp:0,linkClicks:0,purchase:0,indirectPurchase:0,directPurchase:0,convVal:0,indirectConvVal:0,directConvVal:0,cart:0,postSave:0,dailyPurch:0,dailySales:0});
+      r.spend+=num(row,['지출 금액','지출금액','spend']);r.imp+=num(row,['노출','impressions']);r.linkClicks+=num(row,['링크 클릭','링크클릭','link_clicks']);
+      r.purchase+=num(row,['구매','구매 수','구매수','purchases']);r.indirectPurchase+=num(row,['간접 구매','간접구매','조회 후 1일 구매','view_through_purchase','indirect_purchase']);r.directPurchase+=num(row,['직접 구매','직접구매','클릭 후 7일 구매','click_through_purchase','direct_purchase']);
+      r.convVal+=num(row,['구매 전환값','구매전환값','purchase_value']);r.indirectConvVal+=num(row,['간접 구매 전환값','간접구매전환값','간접 전환값','간접전환값','view_through_purchase_value','indirect_purchase_value']);r.directConvVal+=num(row,['직접 구매 전환값','직접구매전환값','직접 전환값','직접전환값','click_through_purchase_value','direct_purchase_value']);
+      r.cart+=num(row,['장바구니','장바구니 수','장바구니수','add_to_cart']);r.postSave+=num(row,['게시물 저장','게시물저장','저장','post_save']);r.dailyPurch+=num(row,['일 구매 건수','일구매건수','일 구매건수']);r.dailySales+=num(row,['일 매출','일매출','매출']);
+    });
+    await eachChunk(metaRawAdP||[],t,function(row){
+      var date=String(val(row,['날짜'])||'').trim();if(!date||date<from||date>to||!mRowMatches(row,mPlatform,mBrand))return;
+      var name=String(val(row,['상품명','제품명'])||'').trim()||String(val(row,['상품 코드','상품코드','UID'])||'').trim();if(!name)return;
+      var a=adMap[name]||(adMap[name]={name:name,adQty:0,adCv:0,cart:0});a.adQty+=num(row,['광고 구매 수량','광고구매수량','광고 구매수량']);a.adCv+=num(row,['광고 구매 금액','광고구매금액','광고 구매금액']);a.cart+=num(row,['장바구니 수','장바구니수','장바구니']);
+    });
+    await eachChunk(metaRawSales||[],t,function(row){
+      var date=String(val(row,['날짜'])||'').trim();if(!date||date<from||date>to||!mRowMatches(row,mPlatform,mBrand))return;
+      var name=String(val(row,['상품명','제품명'])||'').trim()||String(val(row,['상품 코드','상품코드','UID'])||'').trim();if(!name)return;
+      var r=realMap[name]||(realMap[name]={name:name,realQty:0,realCv:0,realCart:0});r.realQty+=num(row,['실 구매 수량','실구매수량','실 구매수량']);r.realCv+=num(row,['실 구매 금액','실구매금액','실 구매금액']);r.realCart+=num(row,['실 장바구니','실장바구니','장바구니 수','장바구니수']);
+    });
+    var days=Object.keys(daily).sort().map(function(k){var r=daily[k];r.cpc=r.linkClicks>0?Math.round(r.spend/r.linkClicks):0;r.ctr=r.imp>0?(r.linkClicks/r.imp*100).toFixed(2):'0.00';r.cpp=r.purchase>0?Math.round(r.spend/r.purchase):0;r.roas=mRoasPct(r.spend,r.convVal);r.indirectRoas=mRoasPct(r.spend,r.indirectConvVal);r.directRoas=mRoasPct(r.spend,r.directConvVal);r.cvr=r.linkClicks>0?(r.purchase/r.linkClicks*100).toFixed(2):'0.00';return r;});
+    var names=Array.from(new Set(Object.keys(adMap).concat(Object.keys(realMap))));
+    var products=names.map(function(name){var a=adMap[name]||{},r=realMap[name]||{},cart=a.cart||0,adQty=a.adQty||0;return{name:name,adQty:adQty,realQty:r.realQty||0,cart:cart,realCart:r.realCart||0,adCv:a.adCv||0,realCv:r.realCv||0,rate:cart>0?(adQty/cart*100).toFixed(1):'0.0'};}).sort(function(a,b){return(b.adQty+b.realQty)-(a.adQty+a.realQty);});
+    return{days:days,products:products};
+  }
+  async function render(){
+    var t=++token;document.documentElement.dataset.metaRendering='true';
+    try{
+      var data=await aggregate(t);if(!alive(t))return;
+      var jobs=[function(){mUpdateCards(data.days);},function(){mUpdateMainChart(data.days);},function(){mUpdateTop5Chart(data.products);},function(){mUpdateDailyTable(data.days);},function(){mUpdateProductTable(data.products);}];
+      for(var i=0;i<jobs.length;i++){if(!alive(t))return;jobs[i]();await pause();}
+    }catch(error){if(!error||error.message!=='META_CANCELLED')console.error('Meta 분할 집계 실패:',error);}
+    finally{if(t===token)delete document.documentElement.dataset.metaRendering;}
+  }
+  mRender=render;window.mRender=render;
+  var oldCancel=window.__cancelMetaRenderV2;
+  window.__cancelMetaRenderV2=function(){token++;if(typeof oldCancel==='function')oldCancel();delete document.documentElement.dataset.metaRendering;};
+})();
+</script>
 </body>
 </html>
