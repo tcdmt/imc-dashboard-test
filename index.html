@@ -25594,45 +25594,27 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   window.__cancelMetaRenderV2=function(){token++;if(typeof oldCancel==='function')oldCancel();delete document.documentElement.dataset.metaRendering;};
 })();
 </script>
-<style id="codex-sheet-diagnostic-v11-style">
-#codex-diag-v11{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:330px;max-height:44vh;overflow:auto;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;background:rgba(255,255,255,.97);box-shadow:0 8px 28px rgba(0,0,0,.18);font:11px/1.45 system-ui;color:#111}
-#codex-diag-v11 .title{font-weight:700;margin-bottom:5px}#codex-diag-v11 .current{padding:6px 8px;border-radius:6px;background:#f3f4f6;margin-bottom:6px;word-break:break-all}#codex-diag-v11 pre{margin:0;white-space:pre-wrap;font:10px/1.4 ui-monospace,monospace;color:#374151}#codex-diag-v11 button{margin-top:7px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer}
-</style>
-<script id="codex-sheet-diagnostic-v11">
+<script id="codex-feedback-active-only-v12">
 (function(){
   'use strict';
-  if(window.__codexDiagnosticV11)return;window.__codexDiagnosticV11=true;
-  var KEY='TCM_DIAGNOSTIC_V11',logs=[],current='대기 중',lastBeat=performance.now(),panel,pre,cur;
-  try{logs=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(logs))logs=[];}catch(e){logs=[];}
-  function stamp(){return new Date().toLocaleTimeString('ko-KR',{hour12:false});}
-  function persist(){try{localStorage.setItem(KEY,JSON.stringify(logs.slice(-80)));}catch(e){}}
-  function draw(){if(cur)cur.textContent='현재 단계: '+current;if(pre)pre.textContent=logs.slice(-14).map(function(x){return x.time+' '+x.text;}).join('\n');}
-  function log(text){logs.push({time:stamp(),text:String(text)});if(logs.length>80)logs=logs.slice(-80);persist();draw();}
-  function enter(name){current=name;log('▶ '+name);try{localStorage.setItem(KEY+'_CURRENT',JSON.stringify({time:stamp(),name:name}));}catch(e){}}
-  function leave(name,start,error){var ms=Math.round(performance.now()-start);current=error?'오류: '+name:'완료: '+name;log((error?'✖ ':'✓ ')+name+' · '+ms+'ms'+(error?' · '+error:''));}
-  function mount(){
-    panel=document.createElement('div');panel.id='codex-diag-v11';panel.innerHTML='<div class="title">시트 연동 진단 v11</div><div class="current"></div><pre></pre><button type="button">진단 기록 초기화</button>';
-    document.body.appendChild(panel);cur=panel.querySelector('.current');pre=panel.querySelector('pre');panel.querySelector('button').onclick=function(){logs=[];persist();current='기록 초기화됨';draw();};
-    try{var old=JSON.parse(localStorage.getItem(KEY+'_CURRENT')||'null');if(old)log('이전 종료 직전 단계: '+old.name+' ('+old.time+')');}catch(e){}
-    draw();
+  if(window.__codexFeedbackActiveOnlyV12)return;
+  window.__codexFeedbackActiveOnlyV12=true;
+  var original=window.applyFeedbackFilter,running=false;
+  if(typeof original!=='function')return;
+  function isActive(){
+    var page=document.getElementById('pg-feedback');
+    return !!(page&&(page.classList.contains('imc-main-tab-active')||page.style.display==='block'));
   }
-  function wrap(name){
-    var fn=window[name];if(typeof fn!=='function'||fn.__diagV11)return;
-    var wrapped=function(){var start=performance.now();enter(name);try{var result=fn.apply(this,arguments);if(result&&typeof result.then==='function')return result.then(function(v){leave(name,start);return v;},function(e){leave(name,start,e&&e.message);throw e;});leave(name,start);return result;}catch(e){leave(name,start,e&&e.message);throw e;}};
-    wrapped.__diagV11=true;wrapped.__diagOriginal=fn;window[name]=wrapped;
+  function guarded(){
+    if(!isActive()){window.__feedbackRenderPendingV12=true;return;}
+    if(running)return;
+    running=true;window.__feedbackRenderPendingV12=false;
+    try{return original.apply(this,arguments);}finally{running=false;}
   }
-  function install(){[
-    'loadMetaFromSheets','refreshMetaFromSheets','loadUnifiedSheets','refreshUnifiedSheets','fetchMetaSheetRows','applyMetaSheetLoadResult',
-    'mRender','mBuildDailyFromRaw','mBuildProductsFromRaw','mUpdateCards','mUpdateMainChart','mUpdateTop5Chart','mUpdateDailyTable','mUpdateProductTable',
-    'buildMetaBrandTabs','mBuildMonthTabsFromData','mResetFilter','switchMain','applyListFilter','applyFeedbackFilter','seedRender'
-  ].forEach(wrap);try{mRender=window.mRender;switchMain=window.switchMain;applyListFilter=window.applyListFilter;applyFeedbackFilter=window.applyFeedbackFilter;}catch(e){}
-  }
-  setInterval(function(){var now=performance.now(),gap=Math.round(now-lastBeat);lastBeat=now;if(gap>2200)log('⚠ 메인 화면 정지 감지 · '+gap+'ms · 직전 단계 '+current);install();},500);
-  document.addEventListener('pointerdown',function(e){var tab=e.target&&e.target.closest&&e.target.closest('.top-tab');if(tab)log('탭 클릭 감지: '+String(tab.textContent||'').trim());},true);
-  if(typeof PerformanceObserver==='function')try{new PerformanceObserver(function(list){list.getEntries().forEach(function(e){if(e.duration>800)log('긴 작업 감지 · '+Math.round(e.duration)+'ms · '+current);});}).observe({entryTypes:['longtask']});}catch(e){}
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){mount();install();});else{mount();install();}
-  var tries=0,timer=setInterval(function(){install();if(++tries>80)clearInterval(timer);},250);
-  window.__getDiagnosticV11=function(){return logs.slice();};
+  guarded.__feedbackActiveOnlyV12=true;
+  guarded.__original=original;
+  window.applyFeedbackFilter=guarded;
+  try{applyFeedbackFilter=guarded;}catch(e){}
 })();
 </script>
 </body>
