@@ -15507,9 +15507,17 @@ if(document.readyState==='loading'){
     var body=$('feedback-body'); if(!body) return;
     list=(list||[]).filter(function(r){ return r && r.checked===true; });
     if(!list.length){ body.innerHTML='<tr><td colspan="19" class="fb-v15-empty">표시할 Feedback 데이터가 없습니다.</td></tr>'; syncScroll(); return; }
-    body.innerHTML=list.map(function(r){ var ci=creatorIndex(r); var t=creatorTotals(r,ci); return '<tr class="fb-v15-row" onclick="fbV15OpenModal('+ci+')">'+
+    var token=(window.__feedbackV15RenderTokenV16||0)+1;window.__feedbackV15RenderTokenV16=token;
+    body.innerHTML='';var cursor=0,batchSize=2;
+    function batch(){
+      if(token!==window.__feedbackV15RenderTokenV16)return;
+      var html=list.slice(cursor,cursor+batchSize).map(function(r){ var ci=creatorIndex(r); var t=creatorTotals(r,ci); return '<tr class="fb-v15-row" onclick="fbV15OpenModal('+ci+')">'+
       '<td><div class="fb-v15-name">'+esc(r.name||'-')+'</div></td>'+ '<td>'+esc(r.followers||'-')+'</td>'+ '<td>'+chBadge(r.ch)+'</td>'+ '<td>'+esc(r.contentType||'-')+'</td>'+ '<td>'+esc(r.collab||r.progress||'-')+'</td>'+ '<td>'+fmtW(r.cost1)+'</td>'+ '<td>'+esc(r.sec||'-')+'</td>'+ '<td>'+fmtW(r.cost2)+'</td>'+ '<td>'+koDate(r.uploadDate)+'</td>'+ '<td>'+platformBadge(r.platform)+'</td>'+ '<td>'+fmtN0(t.view)+'</td>'+ '<td>'+fmtN0(t.like)+'</td>'+ '<td>'+fmtN0(t.comment)+'</td>'+ '<td>'+fmtN0(t.click)+'</td>'+ '<td>'+fmtP(t.ctr,1)+'</td>'+ '<td>'+fmtN0(t.productLike)+'</td>'+ '<td>'+fmtN0(t.sales)+'</td>'+ '<td>'+fmtW(t.revenue)+'</td>'+ '<td>'+fmtP(t.roas,0)+'</td></tr>'; }).join('');
-    syncScroll();
+      body.insertAdjacentHTML('beforeend',html);cursor+=batchSize;
+      if(cursor<list.length){setTimeout(batch,0);return;}
+      syncScroll();
+    }
+    batch();
   };
 
   function syncScroll(){ var wrap=$('fb-v15-tbl-wrap'), top=$('fb-scroll-top'), inner=$('fb-scroll-inner'), tbl=$('fb-v15-main'); if(wrap&&top&&inner&&tbl){ setTimeout(function(){ inner.style.width=tbl.offsetWidth+'px'; },0); top.onscroll=function(){wrap.scrollLeft=top.scrollLeft;}; wrap.onscroll=function(){top.scrollLeft=wrap.scrollLeft;}; } }
@@ -25649,6 +25657,15 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     wrapped.__liveRefreshV14=true;window[name]=wrapped;
   });
   window.__refreshFeedbackTableV14=refresh;
+})();
+</script>
+<script id="codex-feedback-render-cancel-v16">
+(function(){
+  'use strict';
+  if(window.__codexFeedbackRenderCancelV16)return;window.__codexFeedbackRenderCancelV16=true;
+  var prior=window.switchMain;if(typeof prior!=='function')return;
+  window.switchMain=function(tab){if(tab!=='feedback')window.__feedbackV15RenderTokenV16=(window.__feedbackV15RenderTokenV16||0)+1;return prior.apply(this,arguments);};
+  try{switchMain=window.switchMain;}catch(e){}
 })();
 </script>
 </body>
