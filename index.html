@@ -25664,5 +25664,40 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   window.__refreshFeedbackTableV14=refresh;
 })();
 </script>
+<script id="codex-feedback-direct-sync-v18">
+(function(){
+  'use strict';
+  if(window.__codexFeedbackDirectSyncV18)return;window.__codexFeedbackDirectSyncV18=true;
+  function number(v){var n=Number(String(v==null?'':v).replace(/[^0-9.-]/g,''));return isFinite(n)?n:0;}
+  function creatorId(r){return String(r&&r._id||'');}
+  function dayFor(r,ci,d){
+    r._fbData=r._fbData||{};var suffix='_d'+d,key=ci+suffix,day=r._fbData[key];
+    if(!day){var old=Object.keys(r._fbData).find(function(k){return String(k).slice(-suffix.length)===suffix;});day=old?r._fbData[old]:{};}
+    r._fbData[key]=day||{};return r._fbData[key];
+  }
+  function updateVisibleCell(ci,field,value){
+    var body=document.getElementById('feedback-body');if(!body)return;
+    var row=Array.prototype.find.call(body.querySelectorAll('tr'),function(tr){return String(tr.getAttribute('onclick')||'').indexOf('fbV15OpenModal('+ci+')')>-1;});
+    if(!row)return;var index={view:10,like:11,comment:12}[field],cell=row.cells&&row.cells[index];if(cell)cell.textContent=Math.round(number(value)).toLocaleString('ko-KR');
+  }
+  function sync(ci,d,field,value){
+    if(['view','like','comment'].indexOf(field)<0)return;
+    var r=(window.creators||[])[ci];if(!r)return;var day=dayFor(r,ci,d);day[field]=number(value);
+    var drafts=window.__feedbackMetricDrafts=window.__feedbackMetricDrafts||{},id=creatorId(r)||String([r.name||'',r.id||'',r.uploadDate||'',r.ch||''].join('|')),key=id+'::'+d;
+    drafts[key]=drafts[key]||{};drafts[key][field]=number(value);updateVisibleCell(ci,field,value);
+  }
+  var original=window.fbV15StartEdit;
+  if(typeof original==='function'){
+    window.fbV15StartEdit=function(el,ci,d,field){
+      var result=original.apply(this,arguments),input=el&&el.querySelector&&el.querySelector('input');
+      if(input&&['view','like','comment'].indexOf(field)>-1){
+        input.addEventListener('input',function(){sync(ci,d,field,input.value);});
+        input.addEventListener('blur',function(){sync(ci,d,field,input.value);setTimeout(function(){updateVisibleCell(ci,field,input.value);},80);},{once:true});
+      }
+      return result;
+    };
+  }
+})();
+</script>
 </body>
 </html>
