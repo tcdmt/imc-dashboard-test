@@ -25664,5 +25664,24 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   window.__refreshFeedbackTableV14=refresh;
 })();
 </script>
+<style id="feedback-sync-diag-v21-style">#feedback-sync-diag-v21{position:fixed;right:12px;bottom:12px;z-index:2147483647;width:360px;max-height:42vh;overflow:auto;padding:10px;border:1px solid #d1d5db;border-radius:10px;background:rgba(255,255,255,.98);box-shadow:0 8px 28px rgba(0,0,0,.2);font:11px/1.45 system-ui;color:#111}#feedback-sync-diag-v21 b{display:block;margin-bottom:5px}#feedback-sync-diag-v21 pre{margin:0;white-space:pre-wrap;font:10px/1.45 ui-monospace,monospace}</style>
+<script id="feedback-sync-diag-v21">
+(function(){
+  'use strict';if(window.__feedbackSyncDiagV21)return;window.__feedbackSyncDiagV21=true;
+  var lines=[],panel,pre,last=null;
+  function n(v){var x=Number(String(v==null?'':v).replace(/[^0-9.-]/g,''));return isFinite(x)?x:0;}
+  function log(s){lines.push(new Date().toLocaleTimeString('ko-KR',{hour12:false})+' '+s);if(lines.length>18)lines.shift();if(pre)pre.textContent=lines.join('\n');}
+  function day(r,ci,d){var data=r&&r._fbData||{},suffix='_d'+d,key=ci+suffix,out=data[key];if(!out){var k=Object.keys(data).find(function(x){return String(x).slice(-suffix.length)===suffix;});out=k?data[k]:null;}return out||{};}
+  function expected(r,ci,field){var value=0;[-1,0,1,2,3,4,5,6].forEach(function(d){var v=n(day(r,ci,d)[field]);if(v)value=v;});return value;}
+  function cell(ci,field){var body=document.getElementById('feedback-body');if(!body)return '(표 없음)';var row=Array.prototype.find.call(body.querySelectorAll('tr'),function(tr){return String(tr.getAttribute('onclick')||'').indexOf('fbV15OpenModal('+ci+')')>-1;});if(!row)return '(행 없음)';var idx={view:10,like:11,comment:12}[field];return row.cells&&row.cells[idx]?String(row.cells[idx].textContent||'').trim():'(셀 없음)';}
+  function inspect(label){if(!last)return;var r=(window.creators||[])[last.ci],saved=day(r,last.ci,last.d)[last.field];log(label+' | 입력='+last.value+' 데이터='+saved+' 예상='+expected(r,last.ci,last.field)+' 메인='+cell(last.ci,last.field));}
+  function mount(){panel=document.createElement('div');panel.id='feedback-sync-diag-v21';panel.innerHTML='<b>Feedback 반영 진단 v21</b><pre></pre>';document.body.appendChild(panel);pre=panel.querySelector('pre');log('대기 중');}
+  var edit=window.fbV15StartEdit;
+  if(typeof edit==='function')window.fbV15StartEdit=function(el,ci,d,field){var result=edit.apply(this,arguments),input=el&&el.querySelector&&el.querySelector('input');if(input){last={ci:ci,d:d,field:field,value:input.value};log('편집 시작 ci='+ci+' d='+d+' field='+field);input.addEventListener('input',function(){last.value=input.value;log('입력 감지 '+input.value);});input.addEventListener('blur',function(){last.value=input.value;inspect('blur 직후');setTimeout(function(){inspect('blur+200ms');},200);},{once:true});}return result;};
+  var save=window.fbV15SaveModal;
+  if(typeof save==='function')window.fbV15SaveModal=function(){log('저장 버튼 클릭');var result=save.apply(this,arguments);setTimeout(function(){inspect('저장+500ms');},500);return result;};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else mount();
+})();
+</script>
 </body>
 </html>
