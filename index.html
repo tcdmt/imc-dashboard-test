@@ -25282,5 +25282,74 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   };
 })();
 </script>
+<script id="codex-sheet-response-integrity-fix-v26">
+(function(){
+  'use strict';
+  if(window.__codexSheetResponseIntegrityFixV26)return;
+  window.__codexSheetResponseIntegrityFixV26=true;
+  var previousFetch=window.fetch.bind(window);
+
+  function requestUrl(input){
+    try{return typeof input==='string'?input:(input&&input.url)||'';}catch(e){return '';}
+  }
+  function isSheet(url){return /docs\.google\.com\/spreadsheets|\/export\?[^#]*(?:format|output)=csv|\/pub\?[^#]*output=csv/i.test(url||'');}
+  function normalizeUrl(url){try{return decodeURIComponent(String(url||''));}catch(e){return String(url||'');}}
+  function isProductStats(url){
+    var configured=String(window.productStatsSheetUrl||localStorage.getItem('product_stats_sheet_url')||'');
+    if(!configured)return false;
+    var sourceId=(configured.match(/\/spreadsheets\/d\/(?:e\/)?([^\/?#]+)/i)||[])[1]||'';
+    return !!(sourceId&&normalizeUrl(url).indexOf(sourceId)>-1);
+  }
+  function csvRowCount(text){
+    var count=0,inQuotes=false,hasContent=false;
+    text=String(text||'').replace(/^\uFEFF/,'');
+    for(var i=0;i<text.length;i++){
+      var c=text[i];
+      if(c==='"'){
+        if(inQuotes&&text[i+1]==='"'){i++;continue;}
+        inQuotes=!inQuotes;
+      }else if((c==='\n'||c==='\r')&&!inQuotes){
+        if(c==='\r'&&text[i+1]==='\n')i++;
+        if(hasContent){count++;hasContent=false;}
+      }else if(!/\s/.test(c)){hasContent=true;}
+    }
+    if(hasContent)count++;
+    return Math.max(0,count-1);
+  }
+  function cloneInit(init){
+    var next={};
+    Object.keys(init||{}).forEach(function(key){next[key]=init[key];});
+    var headers=new Headers((init&&init.headers)||{});
+    next.headers=headers;
+    return next;
+  }
+
+  window.fetch=async function(input,init){
+    var url=requestUrl(input);
+    if(!isSheet(url))return previousFetch(input,init);
+
+    var next=cloneInit(init);
+    /* no-store means a manual fresh sheet request; propagate it through the shared cache. */
+    if(next.cache==='no-store'){
+      next.cache='reload';
+      next.headers.set('x-tcm-force-refresh','1');
+    }
+    var response=await previousFetch(input,next);
+    if(!response||!response.ok)return response;
+
+    var body=await response.clone().text();
+    if(/^\s*</.test(body)||/<html[\s>]/i.test(body.slice(0,1000)))throw new Error('?쒗듃 ????뱁럹?댁? ?묐떟??諛섑솚?섏뼱 湲곗〈 ?곗씠?곕? ?좎??덉뒿?덈떎.');
+    if(isProductStats(url)){
+      var expected=Array.isArray(window.productStatsRows)?window.productStatsRows.length:0;
+      var received=csvRowCount(body);
+      if(expected>=100&&received<Math.max(10,Math.floor(expected*0.4))){
+        throw new Error('?곹뭹 ?쒗듃 ?묐떟??'+expected.toLocaleString('ko-KR')+'?됱뿉??'+received.toLocaleString('ko-KR')+'?됱쑝濡?鍮꾩젙??媛먯냼?섏뿬 ?곸슜??李⑤떒?덉뒿?덈떎.');
+      }
+      if(received<1)throw new Error('?곹뭹 ?쒗듃 ?묐떟???곗씠???됱씠 ?놁뼱 湲곗〈 ?곗씠?곕? ?좎??덉뒿?덈떎.');
+    }
+    return response;
+  };
+})();
+</script>
 </body>
 </html>
