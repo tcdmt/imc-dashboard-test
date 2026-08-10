@@ -16449,8 +16449,9 @@ function seedEnsureDaily(r){
 }
 function normalizeSeedRow(r,i){
   r = r || {};
-  r.id = r.id || r._id || ('seed_'+Date.now()+'_'+i);
-  r._id = r._id || r.id;
+  r._id = r._id || ('seed_'+Date.now()+'_'+i);
+  if(r.id === r._id && /^seed_[0-9]/.test(String(r._id||''))) r.id = '';
+  else r.id = r.id || '';
   r._order = (r._order!==undefined) ? r._order : i;
   r.name = r.name || r.creator || r['이름'] || '';
   r.handle = r.handle || r.idText || r.account || r['ID'] || '';
@@ -17325,7 +17326,7 @@ window.seedRender();
   function newSeedRow(){
     var id = 's' + Date.now();
     return {
-      _id:id, id:id, _order:(window.seedData || []).length,
+      _id:id, id:'', _order:(window.seedData || []).length,
       name:'', handle:'', channel:'', followers:'',
       fit:0, style:0, mood:0, relation:0,
       status:'리스트업', second:'선택', uploadDate:'',
@@ -25349,6 +25350,47 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     }
     return response;
   };
+})();
+</script>
+<script id="codex-seeding-internal-id-visibility-fix-v27">
+(function(){
+  'use strict';
+  if(window.__codexSeedingInternalIdVisibilityFixV27)return;
+  window.__codexSeedingInternalIdVisibilityFixV27=true;
+
+  function isInternal(value,row){
+    value=String(value||'');
+    return !!(row&&value&&value===String(row._id||'')&&/^seed_[0-9]/.test(value));
+  }
+  function sanitize(){
+    (window.seedData||[]).forEach(function(row){
+      if(!row)return;
+      if(isInternal(row.id,row))row.id='';
+      if(isInternal(row.handle,row))row.handle='';
+    });
+  }
+  function wrap(name){
+    var original=window[name];
+    if(typeof original!=='function'||original.__seedIdVisibilityV27)return;
+    var wrapped=function(){sanitize();return original.apply(this,arguments);};
+    wrapped.__seedIdVisibilityV27=true;
+    window[name]=wrapped;
+  }
+  function install(){
+    sanitize();
+    wrap('seedRender');
+    wrap('seedV11RenderList');
+    var priorSwitch=window.switchMain;
+    if(typeof priorSwitch==='function'&&!priorSwitch.__seedIdVisibilityV27){
+      var switched=function(tab){if(tab==='seeding')sanitize();return priorSwitch.apply(this,arguments);};
+      switched.__seedIdVisibilityV27=true;
+      window.switchMain=switched;
+      try{switchMain=switched;}catch(e){}
+    }
+  }
+  install();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
+  window.addEventListener('load',install);
 })();
 </script>
 </body>
