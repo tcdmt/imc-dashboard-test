@@ -194,6 +194,19 @@
 
       auth = firebase.auth();
       db = firebase.firestore();
+      if (!window.__firestorePersistenceAttemptedV24) {
+        window.__firestorePersistenceAttemptedV24 = true;
+        try {
+          await db.enablePersistence({ synchronizeTabs: true });
+          window.__firestorePersistenceEnabledV24 = true;
+          console.log('Firestore persistent cache enabled (v24)');
+        } catch (persistenceError) {
+          window.__firestorePersistenceEnabledV24 = false;
+          if (persistenceError && persistenceError.code !== 'failed-precondition' && persistenceError.code !== 'unimplemented') {
+            console.warn('Firestore persistent cache unavailable:', persistenceError);
+          }
+        }
+      }
       window.auth = auth;
       window.db = db;
 
@@ -19839,6 +19852,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
     if(Array.isArray(values.items)){
       window.products=values.items;
+      window.__sheetSnapshotItemsReadyV24=true;
       try{ if(typeof window.renderModalItems==='function') window.renderModalItems(); }catch(e){}
     }
     if(values.monthly_budget&&typeof values.monthly_budget==='object') window.__budgetMonthlyBudget=values.monthly_budget;
@@ -24596,10 +24610,12 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 
   function ensureTabData(tab){
     window.__firebaseActiveTab=tab;
-    if(tab==='list'||tab==='feedback')return listenCollection('products');
-    if(tab==='seeding')return Promise.all([listenCollection('seeding'),listenCollection('products')]);
+    var sheetProductsReady=window.__sheetSnapshotItemsReadyV24===true&&Array.isArray(window.products)&&window.products.length>0;
+    var productsReady=sheetProductsReady?Promise.resolve(window.products):listenCollection('products');
+    if(tab==='list'||tab==='feedback')return productsReady;
+    if(tab==='seeding')return Promise.all([listenCollection('seeding'),productsReady]);
     if(tab==='celeb')return listenCollection('celebs');
-    if(tab==='organic')return Promise.all([listenCollection('organic'),listenCollection('products')]);
+    if(tab==='organic')return Promise.all([listenCollection('organic'),productsReady]);
     if(tab==='crm'&&typeof window.crmEnsureLoadedV3==='function')return window.crmEnsureLoadedV3();
     return Promise.resolve([]);
   }
@@ -25123,6 +25139,21 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     wrapped.__liveRefreshV14=true;window[name]=wrapped;
   });
   window.__refreshFeedbackTableV14=refresh;
+})();
+</script>
+<script id="codex-reads-diagnostic-v24">
+(function(){
+  'use strict';
+  if(window.__codexReadsDiagnosticV24)return;
+  window.__codexReadsDiagnosticV24=true;
+  window.getFirebaseReadsReportV24=function(){
+    var source=typeof window.getFirebaseUsageMetricsV4==='function'?window.getFirebaseUsageMetricsV4():{events:[]};
+    var rows=(source.events||[]).filter(function(event){return event.type==='read';});
+    var byCollection={},total=0;
+    rows.forEach(function(event){var count=Number(event.count)||0;total+=count;byCollection[event.collection]=(byCollection[event.collection]||0)+count;});
+    return{total:total,byCollection:byCollection,events:rows,persistenceEnabled:window.__firestorePersistenceEnabledV24===true,sheetProductsUsed:window.__sheetSnapshotItemsReadyV24===true};
+  };
+  window.printFirebaseReadsReportV24=function(){var report=window.getFirebaseReadsReportV24();console.table(report.events);console.log('Firebase reads v24',report);return report;};
 })();
 </script>
 </body>
