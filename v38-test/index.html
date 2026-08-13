@@ -16451,7 +16451,8 @@ const SEEDV11_CH_COLOR = {
   'X':         {bg:'#F1EFE8', color:'#1a1a1a', border:'#D8D5CB'},
   'Blog':      {bg:'#EAF3DE', color:'#3B6D11', border:'#CDE8B4'}
 };
-let data = loadData();
+let data = [];
+data = loadData();
 let currentId = null;
 let currentSummaryTab = 'summary';
 let expandedSummaryDays = new Set();
@@ -17451,7 +17452,7 @@ window.seedRender();
 <script id="seeding-v11-shadow-integration">
 (function(){
   function mountSeedingV11(){
-    const host=document.getElementById('seed-v11-host'); if(!host) return;
+    const host=window.document.getElementById('seed-v11-host'); if(!host) return;
     if(host.shadowRoot) return;
     const root=host.attachShadow({mode:'open'});
     root.innerHTML=`<style>
@@ -18073,7 +18074,8 @@ const defaultData = [
     ]
   }
 ];
-let data = loadData();
+let data = [];
+data = loadData();
 let currentId = null;
 let currentSummaryTab = 'summary';
 let expandedSummaryDays = new Set();
@@ -26060,6 +26062,9 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   document.addEventListener('click',function(e){var tab=e.target&&e.target.closest?e.target.closest('.top-tab,[data-tab]'):null;if(tab&&/Seeding|시딩/.test(tab.textContent||''))setTimeout(convert,0);},true);
   window.addEventListener('resize',place,true);window.addEventListener('scroll',place,true);
 })();
+</script>
+<script id="codex-seeding-build-marker-v39">
+window.__IMC_DASHBOARD_BUILD__='v39-seeding-boot-final';
 </script>
 </body>
 </html>
