@@ -25966,5 +25966,60 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   document.addEventListener('click',function(e){var t=e.target&&e.target.closest?e.target.closest('.top-tab,[data-tab]'):null;if(t&&/Seeding|시딩/.test(t.textContent||''))setTimeout(function(){stabilizeRows();install();},0);},true);
 })();
 </script>
+<script id="codex-seeding-initial-sync-fix-v36">
+(function(){
+  'use strict';
+  if(window.__codexSeedingInitialSyncFixV36)return;
+  window.__codexSeedingInitialSyncFixV36=true;
+
+  var lastFingerprint='',renderTimer=null,rendering=false,remoteReady=false;
+  function fingerprint(rows){
+    try{return JSON.stringify((rows||[]).map(function(r,i){return [r&&r._id||'',r&&r._order!==undefined?r._order:i,r&&r.name||'',r&&r.handle||r&&r.id||'',r&&r.status||'',r&&r.note||''];}));}
+    catch(e){return String((rows||[]).length);}
+  }
+  function pageActive(){
+    var pg=document.getElementById('pg-seeding');
+    return !!(pg&&pg.style.display!=='none');
+  }
+  function renderLatest(reason){
+    clearTimeout(renderTimer);
+    renderTimer=setTimeout(function(){
+      if(rendering||!pageActive()||typeof window.seedRender!=='function')return;
+      var before=fingerprint(window.seedData||[]);
+      if(before===lastFingerprint&&reason!=='remote-first')return;
+      rendering=true;
+      try{window.seedRender();lastFingerprint=fingerprint(window.seedData||[]);}
+      catch(e){console.warn('Seeding 최신 데이터 화면 동기화 실패:',e);}
+      finally{rendering=false;}
+    },0);
+  }
+
+  var previousTracker=window.__codexTrackFirestoreRows;
+  window.__codexTrackFirestoreRows=function(collection,rows){
+    if(typeof previousTracker==='function')previousTracker.apply(this,arguments);
+    if(collection==='seeding'){
+      remoteReady=true;
+      window.__codexSeedingRemoteReadyV36=true;
+      renderLatest(lastFingerprint?'remote-change':'remote-first');
+    }
+  };
+
+  document.addEventListener('click',function(e){
+    var tab=e.target&&e.target.closest?e.target.closest('.top-tab,[data-tab]'):null;
+    if(tab&&/Seeding|시딩/.test(tab.textContent||''))setTimeout(function(){renderLatest('tab-open');},0);
+  },true);
+
+  /* Firestore가 Shadow UI보다 먼저 도착한 경우를 위한 가벼운 화면 상태 감시. 저장은 호출하지 않는다. */
+  setInterval(function(){
+    if(!pageActive())return;
+    if(window.__fbHadData&&Object.prototype.hasOwnProperty.call(window.__fbHadData,'seeding'))remoteReady=true;
+    var now=fingerprint(window.seedData||[]);
+    if(now!==lastFingerprint)renderLatest(remoteReady?'remote-settled':'local-settled');
+  },350);
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){renderLatest('boot');},0);});
+  else setTimeout(function(){renderLatest('boot');},0);
+})();
+</script>
 </body>
 </html>
