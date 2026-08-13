@@ -18222,7 +18222,7 @@ function renderList(){
     return `<tr>
       <td class="seed-editable" ondblclick="event.stopPropagation();seedV11.startEdit(this,${i},'name')" onclick="seedV11.openDetail('${r.id}')"><span class="seed-name">${esc(r.name)||'-'}</span></td>
       ${seedHandleCell(r,i)}
-      <td style="text-align:center">${seedInlineSelect(i,'channel',r.channel||'선택',CH_OPTS,CH_COLOR)}</td>
+      <td style="text-align:center">${seedInlineSelect(i,'channel',r.channel||'선택',['선택'].concat(CH_OPTS),Object.assign({'선택':{bg:'#F3F4F6',color:'#6B7280',border:'#E5E7EB'}},CH_COLOR))}</td>
       <td class="seed-editable" style="text-align:right" ondblclick="event.stopPropagation();seedV11.startEdit(this,${i},'followers')" title="더블클릭 후 숫자를 입력하면 K/M으로 표시">${fmtFollower(r.followers)}</td>
       <td>${stars(r.fit,i,'fit')}</td><td>${stars(r.style,i,'style')}</td><td>${stars(r.mood,i,'mood')}</td><td>${stars(r.relation,i,'relation')}</td>
       <td style="text-align:center">${seedInlineSelect(i,'progress',r.progress||txt,PROGRESS_OPTS,PROGRESS_COLOR)}</td>
@@ -25910,9 +25910,9 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     popup.style.width=width+'px';popup.style.maxHeight=height+'px';popup.style.visibility='visible';
   }
   function openSelect(select){
-    close();anchor=select;popup=document.createElement('div');popup.id='seed-v35-dropdown';
+    close();anchor=select;popup=document.createElement('div');popup.id='seed-v35-dropdown';popup.className='list-float-dd v6';
     Array.prototype.forEach.call(select.options,function(option){
-      var b=document.createElement('button');b.type='button';b.textContent=option.textContent;b.className=option.value===select.value?'selected':'';
+      var b=document.createElement('button');b.type='button';b.textContent=option.textContent;b.className='list-float-item'+(option.value===select.value?' selected':'');var cs=getComputedStyle(select);b.style.background=option.style.background||cs.backgroundColor;b.style.color=option.style.color||cs.color;
       b.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true,composed:true}));close();});
       popup.appendChild(b);
     });
@@ -26021,5 +26021,21 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   else setTimeout(function(){renderLatest('boot');},0);
 })();
 </script>
+<style id="codex-seeding-list-design-v37">
+#seed-v35-dropdown.list-float-dd.v6{
+  padding:6px!important;border-radius:13px!important;
+  border:.5px solid var(--color-border-secondary)!important;
+  background:var(--color-background-primary)!important;
+  box-shadow:0 12px 32px rgba(0,0,0,.20)!important;
+}
+#seed-v35-dropdown.list-float-dd.v6 .list-float-item{
+  display:block;width:100%;border:none;outline:none;text-align:left;
+  padding:7px 11px;border-radius:8px;font-size:11px;font-weight:600;
+  line-height:1.2;cursor:pointer;margin:3px 0;font-family:inherit;
+  white-space:nowrap;transition:transform .08s ease,filter .08s ease;
+}
+#seed-v35-dropdown.list-float-dd.v6 .list-float-item:hover{filter:brightness(.985);transform:translateX(1px)}
+#seed-v35-dropdown.list-float-dd.v6 .list-float-item.selected{box-shadow:inset 0 0 0 1.5px currentColor}
+</style>
 </body>
 </html>
