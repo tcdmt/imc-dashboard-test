@@ -25943,7 +25943,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
  window.__codexPromotionPickerV43=true;
  window.__IMC_DASHBOARD_BUILD__='v43-promotion-picker';
  var popup=null,anchor=null,target=null,outsideHandler=null;
- function names(){var seen=Object.create(null),out=[];(window.promos||[]).forEach(function(p){var n=String(p&&p.name||'').trim();var k=n.toLowerCase();if(n&&!seen[k]){seen[k]=1;out.push(n);}});return out;}
+ function names(){var seen=Object.create(null);return (window.promos||[]).map(function(p,i){var raw=String(p&&p.startDate||'').trim(),time=raw?new Date(raw+'T00:00:00').getTime():Number.NEGATIVE_INFINITY;return{p:p||{},i:i,time:isNaN(time)?Number.NEGATIVE_INFINITY:time};}).sort(function(a,b){return b.time-a.time||(Number(b.p._order)||b.i)-(Number(a.p._order)||a.i);}).reduce(function(out,x){var n=String(x.p.name||'').trim(),k=n.toLowerCase();if(n&&!seen[k]){seen[k]=1;out.push(n);}return out;},[]);}
  function esc(v){return String(v==null?'':v).replace(/[&<>'"]/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m];});}
  function close(){if(popup)popup.remove();popup=anchor=target=null;if(outsideHandler){document.removeEventListener('mousedown',outsideHandler,true);outsideHandler=null;}}
  function position(){if(!popup||!anchor)return;var r=anchor.getBoundingClientRect(),m=8,g=5,w=Math.min(340,innerWidth-m*2),left=Math.max(m,Math.min(r.left,innerWidth-w-m));popup.style.width=w+'px';popup.style.left=left+'px';popup.style.visibility='hidden';var h=Math.min(popup.scrollHeight||340,360),below=innerHeight-r.bottom-g-m,above=r.top-g-m,up=below<h&&above>below,avail=Math.max(120,up?above:below),height=Math.min(h,avail);popup.style.maxHeight=height+'px';popup.style.overflow='hidden';popup.style.top=Math.max(m,Math.min(up?r.top-g-height:r.bottom+g,innerHeight-height-m))+'px';popup.style.visibility='visible';}
@@ -25954,6 +25954,82 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
  function crmInfo(cell){var tr=cell&&cell.closest('#crm-tbody > tr');if(!tr||Array.prototype.indexOf.call(tr.children,cell)!==4)return null;var span=cell.querySelector('[ondblclick*="crmEditCell"]'),m=span&&(span.getAttribute('ondblclick')||'').match(/crmEditCell\(this,(\d+),'promotion'/);if(!m)return null;var i=parseInt(m[1],10),r=(window.crmData||[])[i];return r?{type:'crm',index:i,value:r.promotion||''}:null;}
  document.addEventListener('dblclick',function(e){var cell=e.target&&e.target.closest?e.target.closest('td'):null;if(!cell)return;var info=listInfo(cell)||crmInfo(cell);if(!info)return;e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();open(cell,info);},true);
  window.addEventListener('resize',position,true);window.addEventListener('scroll',position,true);
+})();
+</script>
+<script id="codex-promotion-picker-latest-marker-v44">
+window.__IMC_DASHBOARD_BUILD__='v44-promotion-picker-latest';
+</script>
+<!-- CHOI PATCH v45: allow explicit Budget/Goal/Meta sheet sync through the manual-only fetch guard -->
+<script id="sheet-sync-explicit-request-fix-v45">
+(function(){
+  'use strict';
+  if(window.__sheetSyncExplicitRequestFixV45)return;
+  window.__sheetSyncExplicitRequestFixV45=true;
+
+  var nativeGuardedFetch=window.fetch;
+  var activeCalls=0;
+  var savedFetch=null;
+
+  function forcedFetch(input,init){
+    var options=Object.assign({},init||{});
+    var headers;
+    try{ headers=new Headers((init&&init.headers)||{}); }
+    catch(e){ headers=new Headers(); }
+    headers.set('x-tcm-force-refresh','1');
+    options.headers=headers;
+    options.cache='reload';
+    return nativeGuardedFetch(input,options);
+  }
+
+  async function runAsExplicitSheetSync(fn,ctx,args){
+    if(activeCalls===0){
+      savedFetch=window.fetch;
+      nativeGuardedFetch=savedFetch;
+      window.fetch=forcedFetch;
+    }
+    activeCalls++;
+    try{
+      return await fn.apply(ctx,args);
+    }finally{
+      activeCalls=Math.max(0,activeCalls-1);
+      if(activeCalls===0){
+        window.fetch=savedFetch||nativeGuardedFetch;
+        savedFetch=null;
+      }
+    }
+  }
+
+  function wrap(name){
+    var fn=window[name];
+    if(typeof fn!=='function'||fn.__sheetExplicitV45)return;
+    var wrapped=function(){
+      return runAsExplicitSheetSync(fn,this,Array.prototype.slice.call(arguments));
+    };
+    wrapped.__sheetExplicitV45=true;
+    wrapped.__sheetExplicitOriginal=fn;
+    /* Preserve earlier wrapper markers so their installers do not wrap this
+       function repeatedly while the page is open. */
+    if(fn.__metaResultValidated)wrapped.__metaResultValidated=true;
+    if(fn.__durableSnapshotWrapped)wrapped.__durableSnapshotWrapped=true;
+    if(fn.__tcmManualOnlyWrapped)wrapped.__tcmManualOnlyWrapped=true;
+    if(fn.__tcmSyncFreezeGuard)wrapped.__tcmSyncFreezeGuard=true;
+    window[name]=wrapped;
+  }
+
+  function install(){
+    /* The panel buttons call these two unified entry points. Wrapping the
+       whole run keeps every configured sub-sheet inside one explicit request. */
+    wrap('loadUnifiedSheets');
+    wrap('refreshUnifiedSheets');
+    wrap('loadMetaFromSheets');
+    wrap('refreshMetaFromSheets');
+    wrap('loadBudgetFromSheet');
+    wrap('loadSalesGoalFromSheet');
+  }
+
+  install();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
+  else setTimeout(install,0);
 })();
 </script>
 </body>
