@@ -25352,7 +25352,8 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     /* no-store means a manual fresh sheet request; propagate it through the shared cache. */
     if(next.cache==='no-store'){
       next.cache='reload';
-      next.headers.set('x-tcm-force-refresh','1');
+      /* cache mode alone marks an explicit refresh. A custom header would
+         trigger a CORS preflight that Google Sheets CSV does not accept. */
     }
     var response=await previousFetch(input,next);
     if(!response||!response.ok)return response;
@@ -25957,14 +25958,14 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v44-promotion-picker-latest';
+window.__IMC_DASHBOARD_BUILD__='v46-sheet-cors-fix';
 </script>
-<!-- CHOI PATCH v45: allow explicit Budget/Goal/Meta sheet sync through the manual-only fetch guard -->
-<script id="sheet-sync-explicit-request-fix-v45">
+<!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
+<script id="sheet-sync-explicit-request-fix-v46">
 (function(){
   'use strict';
-  if(window.__sheetSyncExplicitRequestFixV45)return;
-  window.__sheetSyncExplicitRequestFixV45=true;
+  if(window.__sheetSyncExplicitRequestFixV46)return;
+  window.__sheetSyncExplicitRequestFixV46=true;
 
   var nativeGuardedFetch=window.fetch;
   var activeCalls=0;
@@ -25975,7 +25976,6 @@ window.__IMC_DASHBOARD_BUILD__='v44-promotion-picker-latest';
     var headers;
     try{ headers=new Headers((init&&init.headers)||{}); }
     catch(e){ headers=new Headers(); }
-    headers.set('x-tcm-force-refresh','1');
     options.headers=headers;
     options.cache='reload';
     return nativeGuardedFetch(input,options);
