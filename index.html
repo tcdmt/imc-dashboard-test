@@ -24422,9 +24422,56 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     }
   };
 
-  window.crmDelete=function(){
-    alert('CRM 안전 검증본에서는 삭제 기능을 잠갔습니다.');
-    return false;
+  window.crmDelete=function(index){
+    var rows=Array.isArray(window.crmData)?window.crmData:[];
+    var target=rows[index];
+    if(!target){
+      alert('삭제할 CRM 행을 찾지 못했습니다. 화면을 새로고침한 뒤 다시 시도해주세요.');
+      return false;
+    }
+
+    var execute=async function(){
+      try{
+        await loadRemote();
+        var id=rowId(target,index);
+        var documentId=Object.keys(remoteRows).find(function(key){
+          return key===id||rowId(remoteRows[key],0)===id;
+        })||id;
+
+        saving++;
+        setUiLocked(true,'CRM 삭제 확인 중...');
+        try{
+          var ref=window.db.collection('crm').doc(documentId);
+          await ref.delete();
+          if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('delete','crm',1,'crm-verified-delete','crm');
+
+          var verify=await ref.get();
+          if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('read','crm',1,'crm-delete-verification','crm');
+          if(verify.exists)throw new Error('Firebase에서 삭제 완료를 확인하지 못했습니다.');
+
+          delete remoteRows[documentId];
+          window.crmData=(window.crmData||[]).filter(function(row){
+            return row!==target&&rowId(row,0)!==id;
+          });
+          if(typeof window.__codexTrackFirestoreRows==='function')window.__codexTrackFirestoreRows('crm',window.crmData);
+          if(typeof window.crmRender==='function')window.crmRender();
+        }finally{
+          saving=Math.max(0,saving-1);
+          setUiLocked(false);
+        }
+      }catch(error){
+        console.error('CRM 행 삭제 실패:',error);
+        alert('CRM 행을 삭제하지 못했습니다. 기존 데이터는 유지됩니다.\n'+(error.message||error));
+        if(typeof window.crmRender==='function')window.crmRender();
+      }
+    };
+
+    if(typeof window.imcOpenDeleteConfirm==='function'){
+      window.imcOpenDeleteConfirm(execute);
+    }else if(confirm('선택한 CRM 행을 삭제할까요?')){
+      execute();
+    }
+    return true;
   };
 
   window.switchMain=function(tab){
@@ -25962,7 +26009,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v47-meta-product-sheet-fix';
+window.__IMC_DASHBOARD_BUILD__='v48-crm-safe-delete';
 </script>
 <!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
 <script id="sheet-sync-explicit-request-fix-v46">
