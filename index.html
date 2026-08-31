@@ -4899,6 +4899,11 @@ function renderFeedbackRows(list){
     };
     const productLikeEntered=activeDays.filter(d=>dayProductLikeValue(d)!==0);
     const totalProductLike=productLikeEntered.length?dayProductLikeValue(productLikeEntered[productLikeEntered.length-1]):(activeDays.length?dayProductLikeValue(activeDays[activeDays.length-1]):0);
+    const hasProductLikeData=activeDays.some(d=>(items||[]).some(item=>{
+      const ik=(typeof window.fbFeedbackAutoItemKey==='function')?window.fbFeedbackAutoItemKey(item,r.platform):fbFeedbackItemKey(item,r.platform);
+      const value=d.data&&d.data._itemData&&d.data._itemData[ik]?d.data._itemData[ik].productLike:undefined;
+      return value!==undefined&&value!==null&&String(value)!=='';
+    }));
     const totalSales=activeDays.reduce((s,d)=>s+(d.data.sales||0),0);
     const totalRevenue=activeDays.reduce((s,d)=>s+(d.data.revenue||0),0);
     const totalTotal=activeDays.reduce((s,d)=>Math.max(s,d.data.total||0),0);
@@ -4926,7 +4931,7 @@ function renderFeedbackRows(list){
       +`<td style="text-align:right;">${fmtNum(totalLike)}</td>`
       +`<td style="text-align:right;">${fmtNum(totalClick)}</td>`
       +`<td style="text-align:center;">${isNaN(ttlCTR)?'-':ttlCTR.toFixed(1)+'%'}</td>`
-      +`<td style="text-align:right;">${fmtNum(totalProductLike)}</td>`
+       +`<td style="text-align:right;">${hasProductLikeData?fmtNum(totalProductLike):'-'}</td>`
       +`<td style="text-align:right;">${fmtNum(totalSales)}</td>`
       +`<td style="text-align:right;">${fmtWon2(totalRevenue)}</td>`
       +`<td>-</td>`
@@ -13664,6 +13669,7 @@ if(document.readyState==='loading'){
   function rowDate(row){ return normDate(rowVal(row, ['날짜','일자','date','Date'])); }
   function rowPlatform(row){ return normPlatform(rowVal(row, ['플랫폼','판매 채널','판매채널','채널','channel','Channel'])); }
   function rowUid(row){ return normUid(rowVal(row, ['UID','uid','Uid','상품 UID','상품UID','상품 uid','Product UID'])); }
+  function rowName(row){ return normText(rowVal(row, ['상품명','제품명','상품 이름','product','productName','name','Name'])); }
   function rowQty(row){ return rowNum(row, ['실구매수량','실 구매 수량','실 구매수량','판매수량','판매 수량','수량','qty','Qty']); }
   function rowRevenue(row){ return rowNum(row, ['실구매금액','실 구매 금액','실 구매금액','실 수매 금액','실수매금액','실수매 금액','판매금액','판매 금액','매출','실매출','revenue','Revenue','amount','Amount']); }
   function productCode(product){ return clean((product || {}).code || (product || {}).productCode || (product || {}).itemCode || (product || {})['상품코드'] || (product || {})['상품 코드']); }
@@ -13689,10 +13695,11 @@ if(document.readyState==='loading'){
   }
   function itemUid(item, platform){
     item = item || {};
-    var direct = normUid(item.uid || item.UID || item['UID']);
-    if(direct && direct !== '-') return direct;
     var product = findProductForItem(item, platform);
-    return normUid(productUid(product, platform));
+    var platformUid = normUid(productUid(product || item, platform));
+    if(platformUid && platformUid !== '-') return platformUid;
+    var direct = normUid(item.uid || item.UID || item['UID']);
+    return direct && direct !== '-' ? direct : '';
   }
   function baseItemKey(item, platform){
     if(typeof window.fbFeedbackItemKey === 'function') return window.fbFeedbackItemKey(item, platform);
@@ -13714,6 +13721,7 @@ if(document.readyState==='loading'){
       return;
     }
 
+    var updated=false;
     (window.creators || []).forEach(function(r, ci){
       if(!r || r.checked!==true) return;
       var uploadD = r.uploadDate ? new Date(r.uploadDate) : null;
@@ -13731,38 +13739,50 @@ if(document.readyState==='loading'){
         var key = ci + '_d' + dayOffset;
         if(!r._fbData[key]) r._fbData[key] = {view:0,comment:0,like:0,click:0,productLike:0,sales:0,revenue:0,total:0,rankAll:0,rankCat:0};
         var dayData = r._fbData[key];
-        dayData._itemData = {};
+        dayData._itemData = dayData._itemData || {};
 
         var dayQty = 0;
         var dayRev = 0;
 
         items.forEach(function(item){
+          var product = findProductForItem(item, r.platform) || item;
           var uid = itemUid(item, r.platform);
+          var targetName = normText(productName(product) || productName(item));
           if(!uid) return;
           var autoKey = window.fbFeedbackAutoItemKey(item, r.platform);
           var originalKey = baseItemKey(item, r.platform);
           var matched = salesRows.filter(function(row){
-            return rowDate(row) === ds
-              && rowPlatform(row) === platformKey
-              && rowUid(row) === uid;
+            if(rowDate(row) !== ds || rowPlatform(row) !== platformKey) return false;
+            if(rowUid(row) === uid) return true;
+            /* 자사몰은 과거 Item UID 체계가 달랐던 행이 있어 상품명을
+               보조 키로 사용한다. 날짜와 플랫폼은 항상 일치해야 한다. */
+            return platformKey === 'store' && !!targetName && rowName(row) === targetName;
           });
           var qty = matched.reduce(function(sum,row){ return sum + rowQty(row); }, 0);
           var revenue = matched.reduce(function(sum,row){ return sum + rowRevenue(row); }, 0);
-          dayData._itemData[autoKey] = {sales:qty, revenue:revenue};
-          if(originalKey && originalKey !== autoKey) dayData._itemData[originalKey] = {sales:qty, revenue:revenue};
+          var autoMetric=dayData._itemData[autoKey]=dayData._itemData[autoKey]||{};
+          if(autoMetric.sales!==qty||autoMetric.revenue!==revenue)updated=true;
+          autoMetric.sales=qty;autoMetric.revenue=revenue;
+          if(originalKey && originalKey !== autoKey){
+            var originalMetric=dayData._itemData[originalKey]=dayData._itemData[originalKey]||{};
+            if(originalMetric.sales!==qty||originalMetric.revenue!==revenue)updated=true;
+            originalMetric.sales=qty;originalMetric.revenue=revenue;
+          }
           dayQty += qty;
           dayRev += revenue;
         });
 
-        dayData.sales = dayQty;
-        dayData.revenue = dayRev;
-        dayData.total = salesRows.filter(function(row){
+        var totalForDay = salesRows.filter(function(row){
           return rowDate(row) === ds && rowPlatform(row) === platformKey;
         }).reduce(function(sum,row){ return sum + rowRevenue(row); }, 0);
+        if(dayData.sales!==dayQty||dayData.revenue!==dayRev||dayData.total!==totalForDay)updated=true;
+        dayData.sales = dayQty;
+        dayData.revenue = dayRev;
+        dayData.total = totalForDay;
       }
     });
 
-    if(typeof window.fbSaveCreators === 'function') window.fbSaveCreators();
+    if(updated&&typeof window.fbSaveCreators === 'function') window.fbSaveCreators();
     if(typeof window.applyFeedbackFilter === 'function') window.applyFeedbackFilter();
     if(typeof window.ovBuildItemTable === 'function') window.ovBuildItemTable();
     if(typeof window.ovBuildItemRankChart === 'function') window.ovBuildItemRankChart();
@@ -23745,9 +23765,9 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   }
   function itemUid(it,p){
     it=it||{};var pk=platform(p||it.platform);
-    if(pk==='musinsa')return val(it,['uid','UID','musinsaUid','musinsaUID']);
-    if(pk==='29cm')return val(it,['uid','UID','cmUid','cmUID','29cmUid','29CMUid']);
-    if(pk==='store')return val(it,['uid','UID','storeUid','storeUID']);
+    if(pk==='musinsa')return val(it,['musinsaUid','musinsaUID','uid','UID']);
+    if(pk==='29cm')return val(it,['cmUid','cmUID','29cmUid','29CMUid','uid','UID']);
+    if(pk==='store')return val(it,['storeUid','storeUID','uid','UID']);
     return val(it,['uid','UID']);
   }
   function itemCode(it){return val(it,['code','productCode','itemCode','상품 코드','상품코드']);}
@@ -23778,7 +23798,9 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     var pk=platform(p||it.platform),tests=[['uid',itemUid(it,p)],['code',itemCode(it)],['name',itemName(it)]];
     for(var i=0;i<tests.length;i++){
       var value=norm(tests[i][1]);if(!value)continue;
-      var found=pk?(index.get(statsKeyV13(date,tests[i][0],value,pk))||index.get(statsKeyV13(date,tests[i][0],value,''))):index.get(statsKeyV13(date,tests[i][0],value,'*'));
+      /* Feedback 행의 플랫폼이 있으면 같은 플랫폼 데이터만 허용한다.
+         플랫폼이 비어 있는 시트 행이나 다른 플랫폼 행으로 대체하지 않는다. */
+      var found=pk?index.get(statsKeyV13(date,tests[i][0],value,pk)):index.get(statsKeyV13(date,tests[i][0],value,'*'));
       if(found)return found;
     }
     return null;
@@ -23803,13 +23825,23 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
         day._itemData=day._itemData||{};
         var total=0,found=false;
         items.forEach(function(it){
-          var stat=matchStat(it,it.platform||cr.platform,ds);
-          if(!stat)return;
-          var likes=rowLikes(stat),keys=itemKeys(it,it.platform||cr.platform);
-          keys.forEach(function(k){day._itemData[k]=day._itemData[k]||{};day._itemData[k].productLike=likes;});
-          total+=likes;found=true;updated++;
+          /* Creator/Feedback 행의 플랫폼을 상품 객체의 임시 플랫폼보다 우선한다. */
+          var effectivePlatform=cr.platform||it.platform,keys=itemKeys(it,effectivePlatform);
+          var stat=matchStat(it,effectivePlatform,ds);
+          if(!stat){
+            keys.forEach(function(k){
+              day._itemData[k]=day._itemData[k]||{};
+              if(day._itemData[k].productLike!==''&&day._itemData[k].productLike!==undefined)updated++;
+              day._itemData[k].productLike='';
+            });
+            return;
+          }
+          var likes=rowLikes(stat);
+          keys.forEach(function(k){day._itemData[k]=day._itemData[k]||{};if(day._itemData[k].productLike!==likes)updated++;day._itemData[k].productLike=likes;});
+          total+=likes;found=true;
         });
-        if(found)day.productLike=total;
+        var nextTotal=found?total:'';
+        if(day.productLike!==nextTotal){day.productLike=nextTotal;updated++;}
       }
     });
     return updated;
@@ -23824,7 +23856,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   });
   var oldApply=window.applyFeedbackFilter;
   if(typeof oldApply==='function'){
-    window.applyFeedbackFilter=function(){apply(window.creators||[]);return oldApply.apply(this,arguments);};
+    window.applyFeedbackFilter=function(){var count=apply(window.creators||[]);if(count&&typeof window.fbSaveCreators==='function')window.fbSaveCreators();return oldApply.apply(this,arguments);};
     try{applyFeedbackFilter=window.applyFeedbackFilter;}catch(e){}
   }
   if((window.productStatsRows||[]).length)apply(window.creators||[]);
@@ -26009,7 +26041,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v48-crm-safe-delete';
+window.__IMC_DASHBOARD_BUILD__='v50-exact-product-like-match';
 </script>
 <!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
 <script id="sheet-sync-explicit-request-fix-v46">
@@ -26078,6 +26110,33 @@ window.__IMC_DASHBOARD_BUILD__='v48-crm-safe-delete';
     wrap('loadSalesGoalFromSheet');
   }
 
+  install();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
+  else setTimeout(install,0);
+})();
+</script>
+<!-- CODEX PATCH v49: run the latest Feedback sales matcher after Meta refresh -->
+<script id="codex-feedback-store-sales-post-meta-v49">
+(function(){
+  'use strict';
+  if(window.__codexFeedbackStoreSalesPostMetaV49)return;
+  window.__codexFeedbackStoreSalesPostMetaV49=true;
+  function wrap(name){
+    var fn=window[name];
+    if(typeof fn!=='function'||fn.__storeSalesPostMetaV49)return;
+    var wrapped=async function(){
+      var result=await fn.apply(this,arguments);
+      if(typeof window.fbAutoFillSales==='function'){
+        await new Promise(function(resolve){setTimeout(resolve,0);});
+        window.fbAutoFillSales();
+      }
+      return result;
+    };
+    wrapped.__storeSalesPostMetaV49=true;
+    wrapped.__storeSalesPostMetaOriginal=fn;
+    window[name]=wrapped;
+  }
+  function install(){wrap('loadMetaFromSheets');wrap('refreshMetaFromSheets');}
   install();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
   else setTimeout(install,0);
