@@ -4904,9 +4904,11 @@ function renderFeedbackRows(list){
       const value=d.data&&d.data._itemData&&d.data._itemData[ik]?d.data._itemData[ik].productLike:undefined;
       return value!==undefined&&value!==null&&String(value)!=='';
     }));
-    const totalSales=activeDays.reduce((s,d)=>s+(d.data.sales||0),0);
-    const totalRevenue=activeDays.reduce((s,d)=>s+(d.data.revenue||0),0);
-    const totalTotal=activeDays.reduce((s,d)=>Math.max(s,d.data.total||0),0);
+    // 판매 수량/매출 TTL은 업로드 당일(D+0)부터 마지막 집계일(D+6)까지 합산
+    const salesDays=dayData.filter(d=>d.dayOffset>=0);
+    const totalSales=salesDays.reduce((s,d)=>s+(Number(d.data.sales)||0),0);
+    const totalRevenue=salesDays.reduce((s,d)=>s+(Number(d.data.revenue)||0),0);
+    const totalTotal=salesDays.reduce((s,d)=>Math.max(s,Number(d.data.total)||0),0);
     const ttlCTR=totalView>0?totalClick/totalView*100:NaN;
     const ttlCVR=totalClick>0?totalSales/totalClick*100:NaN;
     const ttlRevShare=totalTotal>0?totalRevenue/totalTotal*100:NaN;
@@ -13527,7 +13529,8 @@ if(document.readyState==='loading'){
       var uploadD = r.uploadDate ? new Date(r.uploadDate) : null;
       if(!uploadD || isNaN(uploadD.getTime())) return;
       var creatorPlatform = normalizePlatform(r.platform);
-      var items = (r.items && r.items.length ? r.items : []).filter(function(item){
+      var sourceItems=(r.items&&r.items.length)?r.items:(Array.isArray(r.products)?r.products:[]);
+      var items = sourceItems.filter(function(item){
         return item && (fbFeedbackClean(item.uid||item.UID) || fbFeedbackClean(item.code) || fbFeedbackClean(item.name));
       });
 
@@ -13728,7 +13731,9 @@ if(document.readyState==='loading'){
       if(!uploadD || isNaN(uploadD.getTime())) return;
 
       var platformKey = normPlatform(r.platform);
-      var items = (r.items && r.items.length ? r.items : []).filter(function(item){
+      /* 구버전 Feedback 데이터는 선택 상품을 products에 저장한 행도 있다. */
+      var sourceItems = (r.items && r.items.length) ? r.items : (Array.isArray(r.products) ? r.products : []);
+      var items = sourceItems.filter(function(item){
         return item && (clean(item.uid || item.UID) || clean(item.code) || clean(item.name));
       });
       if(!r._fbData) r._fbData = {};
@@ -13748,12 +13753,12 @@ if(document.readyState==='loading'){
           var product = findProductForItem(item, r.platform) || item;
           var uid = itemUid(item, r.platform);
           var targetName = normText(productName(product) || productName(item));
-          if(!uid) return;
+          if(!uid&&!targetName) return;
           var autoKey = window.fbFeedbackAutoItemKey(item, r.platform);
           var originalKey = baseItemKey(item, r.platform);
           var matched = salesRows.filter(function(row){
             if(rowDate(row) !== ds || rowPlatform(row) !== platformKey) return false;
-            if(rowUid(row) === uid) return true;
+            if(uid&&rowUid(row) === uid) return true;
             /* 자사몰은 과거 Item UID 체계가 달랐던 행이 있어 상품명을
                보조 키로 사용한다. 날짜와 플랫폼은 항상 일치해야 한다. */
             return platformKey === 'store' && !!targetName && rowName(row) === targetName;
@@ -26041,7 +26046,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v50-exact-product-like-match';
+window.__IMC_DASHBOARD_BUILD__='v51-feedback-sales-ttl-store';
 </script>
 <!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
 <script id="sheet-sync-explicit-request-fix-v46">
