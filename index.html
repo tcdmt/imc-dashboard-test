@@ -15516,11 +15516,11 @@ if(document.readyState==='loading'){
   function itemKey(it, platform){ try{ if(typeof window.fbFeedbackAutoItemKey==='function') return window.fbFeedbackAutoItemKey(it, platform); }catch(e){} return fallbackItemKey(it, platform); }
   function getItemData(day, it, platform){ var data=(day && day._itemData)||{}; var k=itemKey(it, platform); var f=fallbackItemKey(it, platform); var u=itemUid(it, platform); var byUid=u ? 'uid:'+norm(platform)+'|'+norm(u) : ''; return data[k] || data[f] || (byUid?data[byUid]:null) || {}; }
   function ensureItemData(day, it, platform){ if(!day._itemData) day._itemData={}; var k=itemKey(it,platform); if(!day._itemData[k]) day._itemData[k]={}; return day._itemData[k]; }
-  function itemsOf(r){ return ((r && r.items)||[]).filter(function(it){ return it && (itemUid(it,r.platform)||itemCode(it)||itemName(it)); }); }
+  function itemsOf(r){ var source=(r&&r.items&&r.items.length)?r.items:((r&&Array.isArray(r.products))?r.products:[]); return source.filter(function(it){ return it && (itemUid(it,r.platform)||itemCode(it)||itemName(it)); }); }
   function isIndividualLink(r){ return clean(r&&r.linkType)==='개별'; }
   function costOf(r){ return num(r && r.cost1) + num(r && r.cost2); }
   function dayMetrics(r, ci, d){ var day=ensureDay(r,ci,d); var items=itemsOf(r); var sales=0, revenue=0, productLike=0, itemClick=0; items.forEach(function(it){ var id=getItemData(day,it,r.platform); sales += num(id.sales); revenue += num(id.revenue); productLike += num(id.productLike); itemClick += num(id.click); }); if(!sales) sales=num(day.sales); if(!revenue) revenue=num(day.revenue); if(!productLike) productLike=num(day.productLike); var total=num(day.total); var click=isIndividualLink(r)?itemClick:num(day.click); var view=num(day.view); var cost=costOf(r); return {day:day, view:view, like:num(day.like), comment:num(day.comment), click:click, ctr:view?click/view*100:0, productLike:productLike, sales:sales, revenue:revenue, total:total, delta:null, cvr:click?sales/click*100:0, share:total?revenue/total*100:0, roas:cost?revenue/cost*100:0}; }
-  function creatorTotals(r, ci){ var t={view:0,like:0,comment:0,click:0,productLike:0,sales:0,revenue:0,total:0}; function entered(v){return v!=null&&String(v).trim()!==''&&num(v)!==0;} activeDays(r).forEach(function(d){ var m=dayMetrics(r,ci,d); if(entered(m.view)) t.view=m.view; if(entered(m.like)) t.like=m.like; if(entered(m.comment)) t.comment=m.comment; if(entered(m.productLike)) t.productLike=m.productLike; t.click+=m.click; if(entered(m.sales)) t.sales=m.sales; if(entered(m.revenue)) t.revenue=m.revenue; if(entered(m.total)) t.total=m.total; }); var cost=costOf(r); t.ctr=t.view?t.click/t.view*100:0; t.roas=cost?t.revenue/cost*100:0; return t; }
+  function creatorTotals(r, ci){ var t={view:0,like:0,comment:0,click:0,productLike:0,sales:0,revenue:0,total:0}; function entered(v){return v!=null&&String(v).trim()!==''&&num(v)!==0;} activeDays(r).forEach(function(d){ var m=dayMetrics(r,ci,d); if(entered(m.view)) t.view=m.view; if(entered(m.like)) t.like=m.like; if(entered(m.comment)) t.comment=m.comment; if(entered(m.productLike)) t.productLike=m.productLike; if(d!==-1){ t.click+=m.click; t.sales+=num(m.sales); t.revenue+=num(m.revenue); } if(entered(m.total)) t.total=m.total; }); var cost=costOf(r); t.ctr=t.view?t.click/t.view*100:0; t.roas=cost?t.revenue/cost*100:0; return t; }
   function deltaHtml(r,ci,d){ var idx=DAYS.indexOf(d); if(idx<=0) return '<span class="fb-v15-delta-neutral">-</span>'; var prev=dayMetrics(r,ci,DAYS[idx-1]).revenue; var now=dayMetrics(r,ci,d).revenue; if(!prev) return '<span class="fb-v15-delta-neutral">-</span>'; var v=(now-prev)/prev*100; if(v>0) return '<span class="fb-v15-delta-up">+'+v.toFixed(1)+'%</span>'; if(v<0) return '<span class="fb-v15-delta-down">'+v.toFixed(1)+'%</span>'; return '<span class="fb-v15-delta-neutral">0.0%</span>'; }
   function chBadge(ch){ var c=String(ch||''); var cls=c==='Instagram'?'fb-v15-badge-ig':c==='Youtube'?'fb-v15-badge-yt':c==='Tiktok'?'fb-v15-badge-tt':'fb-v15-badge-x'; var short={Instagram:'IG',Youtube:'YT',Tiktok:'TT',X:'X'}[c]||c||'-'; return '<span class="fb-v15-badge '+cls+'">'+esc(short)+'</span>'; }
   function feedbackPlatformColor(p){
@@ -15671,8 +15671,8 @@ if(document.readyState==='loading'){
           var data=getItemData(m.day,it,r.platform)||{};
           if(!Object.prototype.hasOwnProperty.call(data,'productLike')&&num(m.productLike)) out.productLike=num(m.productLike);
           if(d!==-1){
-            if(!Object.prototype.hasOwnProperty.call(data,'sales')&&num(m.sales)) out.sales=num(m.sales);
-            if(!Object.prototype.hasOwnProperty.call(data,'revenue')&&num(m.revenue)) out.revenue=num(m.revenue);
+            if(!Object.prototype.hasOwnProperty.call(data,'sales')&&num(m.sales)) out.sales+=num(m.sales);
+            if(!Object.prototype.hasOwnProperty.call(data,'revenue')&&num(m.revenue)) out.revenue+=num(m.revenue);
           }
         });
       }
@@ -26046,7 +26046,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v51-feedback-sales-ttl-store';
+window.__IMC_DASHBOARD_BUILD__='v52-feedback-ttl-sum-final';
 </script>
 <!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
 <script id="sheet-sync-explicit-request-fix-v46">
