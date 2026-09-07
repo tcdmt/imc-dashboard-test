@@ -25860,7 +25860,6 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
   }
   async function saveBudget(){
     if(typeof window.fbSaveSettingDoc==='function')await window.fbSaveSettingDoc('budgetMemos',{values:window.budgetMemos||{}});
-    if(typeof window.saveBudgetProjectsV60==='function')await window.saveBudgetProjectsV60();
     if(typeof window.fbSaveBudget==='function'){
       for(var i=0;i<(window.budgets||[]).length;i++)await window.fbSaveBudget(i,window.budgets[i]||[]);
     }
@@ -25891,6 +25890,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
     var tab=activeTab();
     try{
       if(typeof window.showSaving==='function')window.showSaving();
+      if(typeof window.saveBudgetProjectsV60==='function')await window.saveBudgetProjectsV60();
       await saveTab(tab);
       badge(true,'');
       return true;
@@ -26275,7 +26275,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v60-budget-offline-scroll-persistence';
+window.__IMC_DASHBOARD_BUILD__='v61-budget-offline-durable-persistence';
 </script>
 <!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
 <script id="sheet-sync-explicit-request-fix-v46">
@@ -26386,8 +26386,11 @@ window.__IMC_DASHBOARD_BUILD__='v60-budget-offline-scroll-persistence';
   function clone(value){try{return JSON.parse(JSON.stringify(value));}catch(e){return value;}}
   function frame(){var el=document.getElementById('budget-module-frame');return el&&el.contentWindow;}
   function currentProjects(){
-    try{var target=frame();return target&&typeof target.__getBudgetProjects==='function'?clone(target.__getBudgetProjects()):clone(window.__budgetProjectsV60||{store:[],collab:[]});}
-    catch(e){return clone(window.__budgetProjectsV60||{store:[],collab:[]});}
+    var target=frame();
+    if(!target||typeof target.__getBudgetProjects!=='function')throw new Error('Budget 세부내역 화면이 아직 준비되지 않았습니다. 잠시 후 다시 저장해주세요.');
+    var projects=clone(target.__getBudgetProjects());
+    if(!projects||!Array.isArray(projects.store)||!Array.isArray(projects.collab))throw new Error('Budget 세부내역 데이터를 확인할 수 없습니다.');
+    return projects;
   }
   function applyProjects(projects){
     if(!projects||typeof projects!=='object')return;
@@ -26395,29 +26398,25 @@ window.__IMC_DASHBOARD_BUILD__='v60-budget-offline-scroll-persistence';
     var target=frame();
     if(target)target.postMessage({type:'TCM_BUDGET_PROJECTS_IMPORT',projects:clone(projects)},'*');
   }
-  async function loadProjects(){
-    if(!window.db||!window.isFirebaseReady)return null;
-    var doc=await window.db.collection('settings').doc('budgetProjects').get();
-    if(doc.exists){
-      var data=doc.data()||{},projects=data.values||data.projects||null;
-      if(projects)applyProjects(projects);
-      if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('read','settings',1,'initial-get:budgetProjects','budget');
-      return projects;
-    }
-    return null;
+  var unsubscribe=null, initialSnapshotReady=false;
+  function startProjectsListener(){
+    if(unsubscribe||!window.db||!window.isFirebaseReady)return false;
+    unsubscribe=window.db.collection('settings').doc('budgetProjects').onSnapshot(function(doc){
+      initialSnapshotReady=true;
+      if(doc.exists){
+        var data=doc.data()||{},projects=data.values||data.projects||null;
+        if(projects)applyProjects(projects);
+      }
+      if(typeof window.__firebaseMetricV4==='function')window.__firebaseMetricV4('read','settings',doc.exists?1:0,'listener:budgetProjects','budget');
+    },function(error){console.error('Budget 세부내역 불러오기 실패:',error);});
+    return true;
   }
   window.saveBudgetProjectsV60=async function(){
+    if(!initialSnapshotReady)throw new Error('기존 Budget 세부내역을 확인 중입니다. 잠시 후 다시 저장해주세요.');
     var projects=currentProjects();
     window.__budgetProjectsV60=clone(projects);
     if(typeof window.fbSaveSettingDoc!=='function')throw new Error('Budget 세부내역 저장 기능이 아직 준비되지 않았습니다.');
     return window.fbSaveSettingDoc('budgetProjects',{values:projects});
-  };
-
-  var previousLoad=window.loadAllFromFirebase;
-  window.loadAllFromFirebase=async function(){
-    var result=previousLoad?await previousLoad.apply(this,arguments):true;
-    await loadProjects();
-    return result;
   };
 
   function bindFrame(){
@@ -26428,6 +26427,10 @@ window.__IMC_DASHBOARD_BUILD__='v60-budget-offline-scroll-persistence';
   }
   bindFrame();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindFrame);
+  (function waitForFirebase(attempt){
+    if(startProjectsListener())return;
+    if((attempt||0)<240)setTimeout(function(){waitForFirebase((attempt||0)+1);},250);
+  })(0);
 })();
 </script>
 </body>
