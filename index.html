@@ -2465,7 +2465,8 @@ h1{font-size:20px;margin:0 0 5px}.desc{font-size:12px;color:var(--muted)}
 .project-head{cursor:pointer}
 .project-title-left{display:flex;flex-direction:column;gap:5px}
 .project-period{font-size:12px;color:var(--muted)}
-.project-toggle,.project-edit{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer}
+.project-toggle,.project-edit,.project-delete{border:1px solid var(--line2);background:#fff;border-radius:999px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.project-delete:hover{background:#c0392b;color:#fff;border-color:#c0392b}
 .project-head-actions{display:flex;gap:6px;align-items:center}
 .project-tools{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .budget-month-add-row{align-items:center}
@@ -2612,6 +2613,7 @@ h1{font-size:20px;margin:0 0 5px}.desc{font-size:12px;color:var(--muted)}
 .delete-modal h3{margin:0 0 8px;font-size:16px}
 .delete-modal p{margin:0 0 16px;color:var(--muted);font-size:12px;line-height:1.6}
 .delete-actions{display:flex;justify-content:flex-end;gap:8px}
+#deleteConfirm.final{background:#c0392b!important;border-color:#c0392b!important;color:#fff!important}
 .modal{width:min(620px,100%);background:#fff;border-radius:18px;border:1px solid var(--line);box-shadow:0 24px 80px rgba(0,0,0,.22);padding:20px}
 .modal h3{margin:0 0 14px;font-size:18px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -3300,6 +3302,7 @@ function renderProjects(type){
             &lt;div class=&quot;project-period&quot;&gt;${projectPeriod(p)}&lt;/div&gt;
           &lt;/div&gt;
           &lt;div class=&quot;project-head-actions&quot;&gt;
+            ${type==='store'?`&lt;button type=&quot;button&quot; class=&quot;project-delete&quot; data-delete-project=&quot;${type}&quot; data-pi=&quot;${pi}&quot;&gt;삭제&lt;/button&gt;`:''}
             &lt;button type=&quot;button&quot; class=&quot;project-edit&quot; data-edit-project=&quot;${type}&quot; data-pi=&quot;${pi}&quot;&gt;수정&lt;/button&gt;
             &lt;button type=&quot;button&quot; class=&quot;project-toggle&quot;&gt;${p.open?'접기':'펼치기'}&lt;/button&gt;
           &lt;/div&gt;
@@ -3359,6 +3362,11 @@ function renderProjects(type){
   target.querySelectorAll('[data-edit-project]').forEach(btn=&gt;btn.addEventListener('click',e=&gt;{
     e.stopPropagation();
     openProjectModal(btn.dataset.editProject, Number(btn.dataset.pi));
+  }));
+
+  target.querySelectorAll('[data-delete-project]').forEach(btn=&gt;btn.addEventListener('click',e=&gt;{
+    e.stopPropagation();
+    requestProjectDelete(btn.dataset.deleteProject,Number(btn.dataset.pi));
   }));
 
   target.querySelectorAll('[data-project-action]').forEach(btn=&gt;btn.addEventListener('click',()=&gt;{
@@ -3672,15 +3680,24 @@ function renderKpis(){
 function renderAll(){renderMonthButtons();renderMonthlyViewButtons();renderMonthly();renderDaily();renderProjects('store');renderProjects('collab');renderKpis()}
 function switchTab(tab){document.querySelectorAll('.tab').forEach(b=&gt;b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.panel').forEach(p=&gt;p.classList.toggle('active',p.id===tab))}
 function requestProjectRowDelete(type, pi, ri){
-  pendingDelete={type,pi,ri,step:1};
+  pendingDelete={kind:'row',type,pi,ri,step:1};
   document.getElementById('deleteConfirmTitle').textContent='진짜 삭제하시겠습니까?';
   document.getElementById('deleteConfirmText').textContent='이 세부 내역 행을 삭제할까요? 확인을 누르면 한 번 더 체크합니다.';
   document.getElementById('deleteConfirm').textContent='확인';
   document.getElementById('deleteConfirmModal').classList.add('active');
 }
+function requestProjectDelete(type,pi){
+  pendingDelete={kind:'project',type,pi,step:1};
+  document.getElementById('deleteConfirmTitle').textContent='진짜 삭제하시겠습니까?';
+  document.getElementById('deleteConfirmText').textContent='이 Offline 예산과 세부 내역 전체를 삭제할까요? 확인을 누르면 한 번 더 체크합니다.';
+  document.getElementById('deleteConfirm').textContent='확인';
+  document.getElementById('deleteConfirm').classList.remove('final');
+  document.getElementById('deleteConfirmModal').classList.add('active');
+}
 function closeDeleteModal(){
   pendingDelete=null;
   document.getElementById('deleteConfirmModal').classList.remove('active');
+  document.getElementById('deleteConfirm').classList.remove('final');
 }
 function confirmProjectRowDelete(){
   if(!pendingDelete) return;
@@ -3689,9 +3706,24 @@ function confirmProjectRowDelete(){
     document.getElementById('deleteConfirmTitle').textContent='한 번 더 확인해주세요';
     document.getElementById('deleteConfirmText').textContent='정말로 삭제할까요? 이 작업은 되돌릴 수 없어요.';
     document.getElementById('deleteConfirm').textContent='최종 삭제';
+    document.getElementById('deleteConfirm').classList.add('final');
     return;
   }
-  const {type,pi,ri}=pendingDelete;
+  const {kind,type,pi,ri}=pendingDelete;
+  if(kind==='project'){
+    if(projects[type] &amp;&amp; projects[type][pi]){
+      projects[type].splice(pi,1);
+      closeDeleteModal();
+      renderProjects(type);
+      renderKpis();
+      try{
+        if(parent &amp;&amp; typeof parent.saveBudgetProjectsV60==='function'){
+          parent.saveBudgetProjectsV60().catch(error=&gt;alert('삭제 내용 Firebase 저장 실패: '+(error.message||error)));
+        }
+      }catch(error){alert('삭제 내용 Firebase 저장 실패: '+(error.message||error));}
+    }else closeDeleteModal();
+    return;
+  }
   if(projects[type] &amp;&amp; projects[type][pi] &amp;&amp; projects[type][pi].rows[ri]){
     projects[type][pi].rows.splice(ri,1);
     const renderType=type;
@@ -26275,7 +26307,7 @@ window.seedInlineSelect = function(i,field,value,opts,colorMap){
 })();
 </script>
 <script id="codex-promotion-picker-latest-marker-v44">
-window.__IMC_DASHBOARD_BUILD__='v61-budget-offline-durable-persistence';
+window.__IMC_DASHBOARD_BUILD__='v62-budget-offline-project-delete';
 </script>
 <!-- CHOI PATCH v46: explicit sheet sync without cross-origin custom request headers -->
 <script id="sheet-sync-explicit-request-fix-v46">
